@@ -1,0 +1,35 @@
+{
+  "name": "wisepen-local",
+  "private": true,
+  "version": "0.1.0",
+  "description": "WisePen 本地调试与使用工作台（Tauri 2 + React + TypeScript）",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.6.0",
+    "@tauri-apps/plugin-dialog": "^2.3.0",
+    "lucide-react": "^0.525.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.6.3",
+    "remark-gfm": "^4.0.1",
+    "zustand": "^5.0.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.11",
+    "@tauri-apps/cli": "^2.6.0",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "tailwindcss": "^4.1.11",
+    "typescript": "~5.9.2",
+    "vite": "^7.0.4"
+  }
+}

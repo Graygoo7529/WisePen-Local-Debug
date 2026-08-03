@@ -1,0 +1,27 @@
+[package]
+name = "wisepen-local"
+version = "0.1.0"
+description = "WisePen 本地调试与使用工作台"
+edition = "2021"
+rust-version = "1.77.2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-util"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+futures-util = "0.3"
+md5 = "0.7"
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1

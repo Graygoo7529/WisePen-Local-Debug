@@ -1,0 +1,230 @@
+@import "tailwindcss";
+
+/* ===== 主题令牌：浅色 / 深色双主题，经 CSS 变量驱动 ===== */
+:root {
+  --bg: #f6f7f9;
+  --bg-elev: #ffffff;
+  --bg-sunken: #eef0f3;
+  --bg-hover: rgba(15, 23, 42, 0.05);
+  --bg-active: rgba(99, 102, 241, 0.1);
+  --fg: #1c2333;
+  --fg-muted: #5b6577;
+  --fg-faint: #98a2b3;
+  --line: #e3e6eb;
+  --line-strong: #cfd4dc;
+  --accent: #6366f1;
+  --accent-strong: #4f46e5;
+  --accent-soft: rgba(99, 102, 241, 0.12);
+  --accent-fg: #ffffff;
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+  --success: #16a34a;
+  --success-soft: rgba(22, 163, 74, 0.12);
+  --warning: #d97706;
+  --warning-soft: rgba(217, 119, 6, 0.12);
+  --info: #0284c7;
+  --info-soft: rgba(2, 132, 199, 0.12);
+  --code-bg: #f0f2f5;
+  --shadow-pop: 0 8px 30px rgba(15, 23, 42, 0.12);
+}
+
+.dark {
+  --bg: #101216;
+  --bg-elev: #171a20;
+  --bg-sunken: #0b0d10;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(129, 140, 248, 0.16);
+  --fg: #e6e9ef;
+  --fg-muted: #9aa4b2;
+  --fg-faint: #646e7d;
+  --line: #262b34;
+  --line-strong: #363d49;
+  --accent: #818cf8;
+  --accent-strong: #6366f1;
+  --accent-soft: rgba(129, 140, 248, 0.16);
+  --accent-fg: #101216;
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --success: #4ade80;
+  --success-soft: rgba(74, 222, 128, 0.14);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.14);
+  --info: #38bdf8;
+  --info-soft: rgba(56, 189, 248, 0.14);
+  --code-bg: #1d2129;
+  --shadow-pop: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elev: var(--bg-elev);
+  --color-bg-sunken: var(--bg-sunken);
+  --color-bg-hover: var(--bg-hover);
+  --color-bg-active: var(--bg-active);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-faint: var(--fg-faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-code-bg: var(--code-bg);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-fg antialiased;
+  font-family:
+    "Inter", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  overscroll-behavior: none;
+}
+
+/* ===== 细滚动条 ===== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ===== Markdown 渲染 ===== */
+.md-body {
+  @apply text-[14px] leading-6 break-words;
+}
+.md-body > :first-child {
+  margin-top: 0;
+}
+.md-body > :last-child {
+  margin-bottom: 0;
+}
+.md-body p {
+  margin: 0.5em 0;
+}
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4 {
+  @apply font-semibold text-fg;
+  margin: 1em 0 0.5em;
+}
+.md-body h1 {
+  font-size: 1.25em;
+}
+.md-body h2 {
+  font-size: 1.15em;
+}
+.md-body h3 {
+  font-size: 1.05em;
+}
+.md-body ul,
+.md-body ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.md-body ul {
+  list-style: disc;
+}
+.md-body ol {
+  list-style: decimal;
+}
+.md-body li {
+  margin: 0.25em 0;
+}
+.md-body code {
+  @apply rounded bg-code-bg px-1 py-0.5 text-[13px] text-accent-strong;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+}
+.md-body pre {
+  @apply my-2 overflow-x-auto rounded-lg bg-code-bg p-3;
+}
+.md-body pre code {
+  @apply bg-transparent p-0 text-fg;
+}
+.md-body blockquote {
+  @apply my-2 border-l-2 border-line-strong pl-3 text-fg-muted;
+}
+.md-body table {
+  @apply my-2 w-full border-collapse text-[13px];
+}
+.md-body th,
+.md-body td {
+  @apply border border-line px-2 py-1 text-left;
+}
+.md-body th {
+  @apply bg-bg-sunken font-medium;
+}
+.md-body a {
+  @apply text-accent underline underline-offset-2;
+}
+.md-body hr {
+  @apply my-3 border-line;
+}
+
+/* ===== 通用动画 ===== */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.18s ease-out;
+}
+
+@keyframes blink-caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+.stream-caret::after {
+  content: "▍";
+  @apply text-accent;
+  animation: blink-caret 1s step-end infinite;
+}

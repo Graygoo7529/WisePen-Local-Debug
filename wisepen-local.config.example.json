@@ -1,0 +1,23 @@
+{
+  "services": {
+    "chat": "http://127.0.0.1:9200",
+    "asset": "http://127.0.0.1:19910",
+    "resource": "http://127.0.0.1:19905",
+    "user": "http://127.0.0.1:19903",
+    "document": "http://127.0.0.1:19906",
+    "storage": "http://127.0.0.1:19907",
+    "note": "http://127.0.0.1:19908"
+  },
+  "identity": {
+    "fromSource": "<内部来源凭据，见 Docs/DevEnv/微服务调试指南.md>",
+    "userId": "<测试用户 ID>",
+    "identityType": "1",
+    "groupRoleMap": "{}",
+    "developer": "true",
+    "xDeveloper": "<开发者名，可留空>"
+  },
+  "preferences": {
+    "defaultModel": "",
+    "theme": "light"
+  }
+}

@@ -1,0 +1,27 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependencies
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Tauri
+src-tauri/target
+src-tauri/gen
+
+# Local overrides（可能包含内部凭据，不提交）
+src-tauri/tauri.conf.local.json
+wisepen-local.config.json
