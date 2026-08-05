@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { AlertTriangle, Bot, Brain, ChevronRight, Terminal, User } from "lucide-react";
+import { AlertTriangle, Bot, Brain, ChevronRight, Image as ImageIcon, Terminal, User } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { Markdown } from "../Markdown";
 import { CodeBlock } from "../JsonView";
 import { ToolCallBlock } from "./ToolCallBlock";
-import { formatDuration } from "../../lib/format";
+import { formatBytes, formatDuration } from "../../lib/format";
 import type { DisplayPart } from "./chatDisplay";
 
 /** 单条消息（用户或助手）。 */
@@ -73,6 +73,14 @@ function PartView({
       ) : (
         <div className="mb-1.5 inline-block w-full rounded-2xl rounded-tl-sm bg-bg-elev px-4 py-3 shadow-sm">
           <Markdown text={part.text} className={cn(streaming && part.text && "stream-caret")} />
+        </div>
+      );
+    case "attachment":
+      return (
+        <div className="mb-1.5 inline-flex max-w-full items-center gap-2 rounded-lg border border-accent/30 bg-accent-soft px-3 py-2 text-xs text-accent">
+          <ImageIcon size={14} className="shrink-0" />
+          <span className="truncate">{part.name}</span>
+          <span className="shrink-0 opacity-70">{formatBytes(part.fileSize)}</span>
         </div>
       );
     case "reasoning":

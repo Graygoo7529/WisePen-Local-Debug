@@ -6,7 +6,11 @@ import { SessionSidebar } from "../components/chat/SessionSidebar";
 import { MessageItem } from "../components/chat/MessageItem";
 import { Composer } from "../components/chat/Composer";
 import { RequestOptionsPanel } from "../components/chat/RequestOptionsPanel";
-import { partsFromLiveTurn, partsFromUIMessage } from "../components/chat/chatDisplay";
+import {
+  partsFromLiveTurn,
+  partsFromUIMessage,
+  userPartsFromLiveTurn,
+} from "../components/chat/chatDisplay";
 import { Button, EmptyState, IconButton, Spinner } from "../components/ui";
 import { formatRelativeTime } from "../lib/format";
 import { Link } from "react-router-dom";
@@ -118,7 +122,7 @@ export default function ChatPage() {
             ))}
             {liveTurns.map((turn) => (
               <div key={turn.id}>
-                <MessageItem role="user" parts={[{ kind: "text", text: turn.query }]} />
+                <MessageItem role="user" parts={userPartsFromLiveTurn(turn)} />
                 <MessageItem
                   role="assistant"
                   parts={partsFromLiveTurn(turn)}

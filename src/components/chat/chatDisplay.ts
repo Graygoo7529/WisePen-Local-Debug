@@ -4,6 +4,7 @@ import type { UIMessage } from "../../lib/types";
 /** 渲染层统一的消息部件：历史消息与实时回合都归一化到这里。 */
 export type DisplayPart =
   | { kind: "text"; text: string }
+  | { kind: "attachment"; name: string; fileSize: number }
   | { kind: "reasoning"; text: string; durationMs?: number }
   | { kind: "tool"; tool: ToolDisplay }
   | { kind: "error"; text: string };
@@ -67,6 +68,18 @@ export function partsFromLiveTurn(turn: LiveTurn): DisplayPart[] {
     parts.push({ kind: "error", text: turn.errorText });
   }
   return parts;
+}
+
+/** 实时回合中的用户输入，包括本轮实际发送的图片快照。 */
+export function userPartsFromLiveTurn(turn: LiveTurn): DisplayPart[] {
+  return [
+    ...turn.attachments.map((attachment) => ({
+      kind: "attachment" as const,
+      name: attachment.name,
+      fileSize: attachment.fileSize,
+    })),
+    { kind: "text", text: turn.query },
+  ];
 }
 
 function toolDisplayFrom(t: ToolCallView): ToolDisplay {

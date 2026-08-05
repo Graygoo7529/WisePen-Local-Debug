@@ -49,11 +49,9 @@ export function buildHeaders(service: ServiceKey): Record<string, string> {
     "X-From-Source": s.fromSource,
     "X-User-Id": s.userId,
   };
-  // Java 侧服务涉及下游权限判断时需要的身份头
-  if (service !== "chat") {
-    if (s.identityType) h["X-Identity-Type"] = s.identityType;
-    if (s.groupRoleMap) h["X-Group-Role-Map"] = s.groupRoleMap;
-  }
+  // Chat 服务也会继续调用 Java 服务，必须保留完整身份上下文。
+  if (s.identityType) h["X-Identity-Type"] = s.identityType;
+  if (s.groupRoleMap) h["X-Group-Role-Map"] = s.groupRoleMap;
   if (s.developer) h["developer"] = s.developer;
   if (s.xDeveloper) h["X-Developer"] = s.xDeveloper;
   return h;

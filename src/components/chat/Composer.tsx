@@ -1,6 +1,16 @@
 import { useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { FolderPlus, Paperclip, SendHorizonal, SlidersHorizontal, Square, X } from "lucide-react";
+import {
+  Check,
+  FolderPlus,
+  Image as ImageIcon,
+  ImagePlus,
+  Paperclip,
+  SendHorizonal,
+  SlidersHorizontal,
+  Square,
+  X,
+} from "lucide-react";
 import { Badge, Button, IconButton, Input } from "../ui";
 import { Modal } from "../Modal";
 import { useChatStore } from "../../stores/chatStore";
@@ -20,6 +30,8 @@ export function Composer({
   const send = useChatStore((s) => s.send);
   const abort = useChatStore((s) => s.abort);
   const uploadAttachment = useChatStore((s) => s.uploadAttachment);
+  const selectedAttachmentIds = useChatStore((s) => s.selectedAttachmentIds);
+  const toggleAttachmentSelection = useChatStore((s) => s.toggleAttachmentSelection);
   const deleteAttachment = useChatStore((s) => s.deleteAttachment);
   const session = useChatStore((s) => s.currentSession);
   const options = useChatStore((s) => s.options);
@@ -36,41 +48,79 @@ export function Composer({
 
   const doSend = async () => {
     const q = query.trim();
-    if (!q || sending) return;
+    if (!q || sending || uploading) return;
     setQuery("");
     await send(q);
     textareaRef.current?.focus();
   };
 
-  const pickFile = async () => {
-    const picked = await openDialog({ multiple: false, title: "选择附件（≤100MB）" });
-    if (!picked) return;
-    setUploading(true);
-    await uploadAttachment(picked);
-    setUploading(false);
+  const pickImages = async () => {
+    try {
+      const picked = await openDialog({
+        multiple: true,
+        title: "选择图片",
+        filters: [{ name: "图片", extensions: ["jpg", "jpeg", "png", "webp"] }],
+      });
+      if (!picked) return;
+      const paths = Array.isArray(picked) ? picked : [picked];
+      setUploading(true);
+      for (const path of paths) {
+        await uploadAttachment(path);
+      }
+    } catch (error) {
+      console.error("选择图片失败", error);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const tempRefs = session?.temporary_attachment_refs ?? [];
   const resRefs = session?.resource_attachment_refs ?? [];
+  const selectedIds = new Set(selectedAttachmentIds);
+  const selectedImageCount = tempRefs.filter((a) => selectedIds.has(a.attachment_id)).length;
 
   return (
     <div className="border-t border-line bg-bg-elev px-4 pt-2 pb-3">
       {(tempRefs.length > 0 || resRefs.length > 0) && (
         <div className="mb-2 flex flex-wrap gap-1.5">
-          {tempRefs.map((a) => (
-            <Badge key={a.attachment_id} tone="blue" className="gap-1.5 py-1">
-              <Paperclip size={11} />
-              {a.attachment_name}
-              <span className="text-[10px] opacity-70">{formatBytes(a.file_size)}</span>
-              <button
-                className="cursor-pointer hover:text-danger"
-                title="删除附件"
-                onClick={() => void deleteAttachment(a.attachment_id)}
+          {tempRefs.map((a) => {
+            const isImage = ["jpg", "jpeg", "png", "webp"].includes(a.extension.toLowerCase());
+            const selected = selectedIds.has(a.attachment_id);
+            return (
+              <div
+                key={a.attachment_id}
+                className={cn(
+                  "inline-flex h-7 max-w-[280px] items-center rounded-md border text-xs",
+                  selected
+                    ? "border-accent bg-accent-soft text-accent"
+                    : "border-line bg-bg-hover text-fg-muted",
+                )}
               >
-                <X size={11} />
-              </button>
-            </Badge>
-          ))}
+                <button
+                  type="button"
+                  className={cn(
+                    "flex min-w-0 items-center gap-1.5 px-2",
+                    isImage ? "cursor-pointer" : "cursor-default",
+                  )}
+                  title={isImage ? (selected ? "取消本轮发送" : "加入本轮发送") : "临时附件"}
+                  disabled={!isImage || sending}
+                  onClick={() => toggleAttachmentSelection(a.attachment_id)}
+                >
+                  {selected ? <Check size={12} /> : isImage ? <ImageIcon size={12} /> : <Paperclip size={12} />}
+                  <span className="truncate">{a.attachment_name}</span>
+                  <span className="shrink-0 text-[10px] opacity-70">{formatBytes(a.file_size)}</span>
+                </button>
+                <IconButton
+                  title="删除附件"
+                  className="h-6 w-6 hover:text-danger"
+                  disabled={sending}
+                  onClick={() => void deleteAttachment(a.attachment_id)}
+                >
+                  <X size={11} />
+                </IconButton>
+              </div>
+            );
+          })}
           {resRefs.map((a) => (
             <Badge key={a.attachment_id} tone="accent" className="gap-1.5 py-1">
               <FolderPlus size={11} />
@@ -104,8 +154,12 @@ export function Composer({
           }}
         />
         <div className="flex items-center gap-1 px-2 pb-2">
-          <IconButton title="上传临时附件" onClick={() => void pickFile()} disabled={uploading}>
-            <Paperclip size={16} />
+          <IconButton
+            title="选择图片"
+            onClick={() => void pickImages()}
+            disabled={uploading || sending || selectedImageCount >= 10}
+          >
+            <ImagePlus size={16} />
           </IconButton>
           <ResourceAttachButton />
           <div className="relative">
@@ -123,7 +177,12 @@ export function Composer({
             )}
           </div>
           <div className="flex-1" />
-          {uploading && <span className="text-xs text-fg-faint">上传附件中…</span>}
+          {selectedImageCount > 0 && !uploading && (
+            <span className="text-xs text-fg-faint" title="本轮已选图片">
+              {selectedImageCount}/10
+            </span>
+          )}
+          {uploading && <span className="text-xs text-fg-faint">上传图片中…</span>}
           {sending ? (
             <Button size="sm" variant="danger" icon={<Square size={13} />} onClick={abort}>
               停止
@@ -133,7 +192,7 @@ export function Composer({
               size="sm"
               variant="primary"
               icon={<SendHorizonal size={14} />}
-              disabled={!query.trim()}
+              disabled={!query.trim() || uploading}
               onClick={() => void doSend()}
             >
               发送
