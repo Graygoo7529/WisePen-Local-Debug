@@ -15,9 +15,7 @@ import type {
 } from "../lib/types";
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
-const MAX_IMAGE_COUNT = 10;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const MAX_TOTAL_IMAGE_BYTES = 12 * 1024 * 1024;
 
 // ============ 实时回合（流式） ============
 export interface ToolCallView {
@@ -169,7 +167,7 @@ interface ChatState {
   liveTurns: LiveTurn[];
   sending: boolean;
   activeRequestId: string | null;
-  selectedAttachmentIds: string[];
+  userDefinedAttachmentIds: string[];
   options: RequestOptions;
 
   loadSessions: () => Promise<void>;
@@ -184,7 +182,6 @@ interface ChatState {
   send: (query: string) => Promise<void>;
   abort: () => void;
   uploadAttachment: (path: string) => Promise<void>;
-  toggleAttachmentSelection: (attachmentId: string) => void;
   deleteAttachment: (attachmentId: string) => Promise<void>;
   addResourceAttachment: (resourceId: string) => Promise<void>;
 }
@@ -210,7 +207,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
   liveTurns: [],
   sending: false,
   activeRequestId: null,
-  selectedAttachmentIds: [],
+  userDefinedAttachmentIds: [],
   options: defaultRequestOptions(),
 
   loadSessions: async () => {
@@ -233,7 +230,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
       history: [],
       historyLoadedPages: 0,
       historyTotal: 0,
-      selectedAttachmentIds: [],
+      userDefinedAttachmentIds: [],
     });
     await Promise.all([getState().refreshSession(), (async () => {
       set({ historyLoading: true });
@@ -257,10 +254,21 @@ export const useChatStore = create<ChatState>((set, getState) => ({
     if (!id) return;
     try {
       const session = await chatApi.getSession(id);
-      set((s) => ({
-        currentSession: s.currentSessionId === id ? session : s.currentSession,
-        sessions: s.sessions.map((x) => (x.id === id ? { ...x, ...session } : x)),
-      }));
+      set((s) => {
+        const activeAttachmentIds = new Set(
+          session.temporary_attachment_refs.map((attachment) => attachment.attachment_id),
+        );
+        return {
+          currentSession: s.currentSessionId === id ? session : s.currentSession,
+          sessions: s.sessions.map((x) => (x.id === id ? { ...x, ...session } : x)),
+          userDefinedAttachmentIds:
+            s.currentSessionId === id
+              ? s.userDefinedAttachmentIds.filter((attachmentId) =>
+                  activeAttachmentIds.has(attachmentId),
+                )
+              : s.userDefinedAttachmentIds,
+        };
+      });
     } catch {
       /* 会话可能被删除 */
     }
@@ -277,7 +285,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
         history: [],
         historyLoadedPages: 0,
         historyTotal: 0,
-        selectedAttachmentIds: [],
+        userDefinedAttachmentIds: [],
       }));
       toast.success("已创建新会话");
     } catch (e) {
@@ -296,7 +304,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
               currentSession: null,
               history: [],
               liveTurns: [],
-              selectedAttachmentIds: [],
+              userDefinedAttachmentIds: [],
             }
           : {}),
       }));
@@ -372,7 +380,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
     }
 
     const opts = getState().options;
-    const selectedAttachments = selectedImageAttachments(getState());
+    const userDefinedAttachments = currentUserDefinedAttachments(getState());
     let runtimeOptions: Record<string, unknown> = {};
     if (opts.runtimeOptionsText.trim()) {
       try {
@@ -391,8 +399,8 @@ export const useChatStore = create<ChatState>((set, getState) => ({
       runtime_options: runtimeOptions,
       frontend_states: opts.frontendStates.length > 0 ? opts.frontendStates : null,
       user_defined_attachment_ids:
-        selectedAttachments.length > 0
-          ? selectedAttachments.map((attachment) => attachment.attachment_id)
+        userDefinedAttachments.length > 0
+          ? userDefinedAttachments.map((attachment) => attachment.attachment_id)
           : null,
       user_defined_allow_tool_names: opts.allowToolNames.length > 0 ? opts.allowToolNames : null,
       user_defined_deny_tool_names: opts.denyToolNames.length > 0 ? opts.denyToolNames : null,
@@ -403,7 +411,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
     const turn: LiveTurn = {
       id: crypto.randomUUID(),
       query: query.trim(),
-      attachments: selectedAttachments.map((attachment) => ({
+      attachments: userDefinedAttachments.map((attachment) => ({
         attachmentId: attachment.attachment_id,
         name: attachment.attachment_name,
         fileSize: attachment.file_size,
@@ -448,7 +456,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
         toast.error(`对话流失败：${message}`);
       },
     });
-    set({ activeRequestId: requestId, selectedAttachmentIds: [] });
+    set({ activeRequestId: requestId, userDefinedAttachmentIds: [] });
   },
 
   abort: () => {
@@ -472,15 +480,6 @@ export const useChatStore = create<ChatState>((set, getState) => ({
         throw new Error("单张图片不能超过 5 MiB");
       }
 
-      const selected = selectedImageAttachments(getState());
-      if (selected.length >= MAX_IMAGE_COUNT) {
-        throw new Error("单轮最多发送 10 张图片");
-      }
-      const selectedBytes = selected.reduce((total, item) => total + item.file_size, 0);
-      if (selectedBytes + stat.size > MAX_TOTAL_IMAGE_BYTES) {
-        throw new Error("单轮图片总大小不能超过 12 MiB");
-      }
-
       let sessionId = getState().currentSessionId;
       if (!sessionId) {
         const session = await chatApi.createSession();
@@ -490,7 +489,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
           currentSession: session,
           history: [],
           liveTurns: [],
-          selectedAttachmentIds: [],
+          userDefinedAttachmentIds: [],
         }));
         sessionId = session.id;
       }
@@ -513,6 +512,16 @@ export const useChatStore = create<ChatState>((set, getState) => ({
       if (result.status >= 400) {
         throw new Error(`OSS 上传失败 HTTP ${result.status}: ${result.body.slice(0, 200)}`);
       }
+
+      const attachment: TemporaryAttachmentRef = {
+        attachment_id: init.attachment_id,
+        attachment_type: "temporary",
+        attachment_name: name,
+        object_key: init.object_key,
+        extension,
+        file_size: stat.size,
+        mime_type: null,
+      };
       const selectForCurrentSession = getState().currentSessionId === sessionId;
       set((s) => ({
         ...(selectForCurrentSession && s.currentSessionId === sessionId && s.currentSession
@@ -520,25 +529,14 @@ export const useChatStore = create<ChatState>((set, getState) => ({
               currentSession: {
                 ...s.currentSession,
                 temporary_attachment_refs: s.currentSession.temporary_attachment_refs.some(
-                  (attachment) => attachment.attachment_id === init.attachment_id,
+                  (item) => item.attachment_id === attachment.attachment_id,
                 )
                   ? s.currentSession.temporary_attachment_refs
-                  : [
-                      ...s.currentSession.temporary_attachment_refs,
-                      {
-                        attachment_id: init.attachment_id,
-                        attachment_type: "temporary",
-                        attachment_name: name,
-                        object_key: init.object_key,
-                        extension,
-                        file_size: stat.size,
-                        mime_type: null,
-                      },
-                    ],
+                  : [...s.currentSession.temporary_attachment_refs, attachment],
               },
-              selectedAttachmentIds: s.selectedAttachmentIds.includes(init.attachment_id)
-                ? s.selectedAttachmentIds
-                : [...s.selectedAttachmentIds, init.attachment_id],
+              userDefinedAttachmentIds: s.userDefinedAttachmentIds.includes(attachment.attachment_id)
+                ? s.userDefinedAttachmentIds
+                : [...s.userDefinedAttachmentIds, attachment.attachment_id],
             }
           : {}),
       }));
@@ -546,7 +544,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
         await getState().refreshSession();
       }
       toast.success(
-        selectForCurrentSession ? `图片「${name}」已上传并选中` : `图片「${name}」已上传`,
+        selectForCurrentSession ? `图片「${name}」已上传，将附加到本轮消息` : `图片「${name}」已上传`,
       );
     } catch (e) {
       if (uploadSessionId && initializedAttachmentId) {
@@ -559,40 +557,13 @@ export const useChatStore = create<ChatState>((set, getState) => ({
     }
   },
 
-  toggleAttachmentSelection: (attachmentId) => {
-    const state = getState();
-    if (state.selectedAttachmentIds.includes(attachmentId)) {
-      set({
-        selectedAttachmentIds: state.selectedAttachmentIds.filter((id) => id !== attachmentId),
-      });
-      return;
-    }
-
-    const attachment = state.currentSession?.temporary_attachment_refs.find(
-      (item) => item.attachment_id === attachmentId,
-    );
-    if (!attachment || !isImageAttachment(attachment)) return;
-
-    const selected = selectedImageAttachments(state);
-    if (selected.length >= MAX_IMAGE_COUNT) {
-      toast.error("单轮最多发送 10 张图片");
-      return;
-    }
-    const totalBytes = selected.reduce((total, item) => total + item.file_size, 0);
-    if (attachment.file_size > MAX_IMAGE_BYTES || totalBytes + attachment.file_size > MAX_TOTAL_IMAGE_BYTES) {
-      toast.error("所选图片超过单轮大小限制");
-      return;
-    }
-    set({ selectedAttachmentIds: [...state.selectedAttachmentIds, attachmentId] });
-  },
-
   deleteAttachment: async (attachmentId) => {
     const sessionId = getState().currentSessionId;
     if (!sessionId) return;
     try {
       await chatApi.deleteAttachment(sessionId, attachmentId);
       set((s) => ({
-        selectedAttachmentIds: s.selectedAttachmentIds.filter((id) => id !== attachmentId),
+        userDefinedAttachmentIds: s.userDefinedAttachmentIds.filter((id) => id !== attachmentId),
       }));
       await getState().refreshSession();
       toast.success("附件已删除");
@@ -617,16 +588,12 @@ export const useChatStore = create<ChatState>((set, getState) => ({
   },
 }));
 
-function isImageAttachment(attachment: TemporaryAttachmentRef): boolean {
-  return IMAGE_EXTENSIONS.has(attachment.extension.toLowerCase());
-}
-
-function selectedImageAttachments(
-  state: Pick<ChatState, "currentSession" | "selectedAttachmentIds">,
+function currentUserDefinedAttachments(
+  state: Pick<ChatState, "currentSession" | "userDefinedAttachmentIds">,
 ): TemporaryAttachmentRef[] {
-  const selectedIds = new Set(state.selectedAttachmentIds);
+  const attachmentIds = new Set(state.userDefinedAttachmentIds);
   return (state.currentSession?.temporary_attachment_refs ?? []).filter(
-    (attachment) => selectedIds.has(attachment.attachment_id) && isImageAttachment(attachment),
+    (attachment) => attachmentIds.has(attachment.attachment_id),
   );
 }
 
