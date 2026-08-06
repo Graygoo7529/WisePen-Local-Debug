@@ -504,13 +504,15 @@ export const useChatStore = create<ChatState>((set, getState) => ({
         md5,
       });
       initializedAttachmentId = init.attachment_id;
-      const result = await invoke<{ status: number; body: string }>("oss_put_file", {
-        putUrl: init.put_url,
-        callbackHeader: init.callback_header || null,
-        path,
-      });
-      if (result.status >= 400) {
-        throw new Error(`OSS 上传失败 HTTP ${result.status}: ${result.body.slice(0, 200)}`);
+      if (!init.flash_uploaded) {
+        const result = await invoke<{ status: number; body: string }>("oss_put_file", {
+          putUrl: init.put_url,
+          callbackHeader: init.callback_header || null,
+          path,
+        });
+        if (result.status >= 400) {
+          throw new Error(`OSS 上传失败 HTTP ${result.status}: ${result.body.slice(0, 200)}`);
+        }
       }
 
       const attachment: TemporaryAttachmentRef = {

@@ -105,6 +105,7 @@ export interface InitUploadResponse {
   object_key: string;
   put_url: string;
   callback_header: string;
+  flash_uploaded: boolean;
 }
 
 // ============ Chat：Memory ============
