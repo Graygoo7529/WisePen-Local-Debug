@@ -44,7 +44,7 @@ export interface EndpointPreset {
  * body 模板字段从 src/api/chat.ts、src/api/asset.ts 的封装函数参数推断。
  */
 export const ENDPOINT_PRESETS: EndpointPreset[] = [
-  // ---- Chat：对话（1）----
+  // ---- Chat：对话（5）----
   {
     service: "chat",
     method: "POST",
@@ -62,7 +62,49 @@ export const ENDPOINT_PRESETS: EndpointPreset[] = [
       user_defined_deny_tool_names: null,
       user_defined_on_demand_skill_ids: null,
       user_defined_force_enabled_skill_ids: null,
+      client_tool_capabilities: [
+        {
+          name: "local_debug_echo",
+          description: "在 WisePen-Local 中回显一段调试文本。",
+          input_schema: {
+            type: "object",
+            properties: { text: { type: "string" } },
+            required: ["text"],
+            additionalProperties: false,
+          },
+        },
+      ],
     },
+  },
+  {
+    service: "chat",
+    method: "GET",
+    path: "/chat/completions/active?session_id=",
+    label: "查询会话当前 active Turn",
+  },
+  {
+    service: "chat",
+    method: "GET",
+    path: "/chat/completions/stream?session_id=",
+    label: "重连 active Turn SSE（流式交互请用对话页）",
+  },
+  {
+    service: "chat",
+    method: "POST",
+    path: "/chat/completions/recover",
+    label: "恢复挂起对话 SSE（流式交互请用对话页）",
+    bodyTemplate: {
+      session_id: "",
+      client_tool_results: [],
+      tool_approval_status: [],
+    },
+  },
+  {
+    service: "chat",
+    method: "POST",
+    path: "/chat/completions/cancel",
+    label: "取消当前 Chat Turn",
+    bodyTemplate: { session_id: "" },
   },
   // ---- Chat：Session（8）----
   {

@@ -1,6 +1,7 @@
 import { get, post, del, request } from "./client";
 import type {
   AvailableModels,
+  ActiveChatTurnResponse,
   InitUploadResponse,
   MemoryItem,
   ModelInfo,
@@ -54,6 +55,14 @@ export const chatApi = {
       page,
       size,
     }),
+
+  // ---- Chat Turn ----
+  getActiveChatTurn: (sessionId: string) =>
+    get<ActiveChatTurnResponse>("chat", "/chat/completions/active", {
+      session_id: sessionId,
+    }),
+  cancelChatCompletion: (sessionId: string) =>
+    post<unknown>("chat", "/chat/completions/cancel", { session_id: sessionId }),
 
   // ---- Attachment ----
   initUploadTemporaryAttachment: (body: {

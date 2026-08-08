@@ -9,7 +9,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             http::rest_request,
-            sse::chat_completion,
+            sse::chat_stream,
             sse::abort_chat,
             fsutil::read_text_file,
             fsutil::file_stat,

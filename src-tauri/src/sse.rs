@@ -1,4 +1,4 @@
-use crate::error::CmdResult;
+use crate::error::{CmdError, CmdResult};
 use crate::http::CLIENT;
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -33,52 +33,68 @@ pub fn abort_chat(request_id: String) {
     }
 }
 
-/// 发起 POST /chat/completions 并把 SSE 事件逐帧推给前端 Channel。
+/// 发起 GET/POST SSE 请求并把事件逐帧推给前端 Channel。
 #[tauri::command]
-pub async fn chat_completion(
+pub async fn chat_stream(
     request_id: String,
+    method: String,
     url: String,
     headers: Option<HashMap<String, String>>,
-    body: Value,
+    body: Option<Value>,
     on_event: Channel<StreamFrame>,
 ) -> CmdResult<()> {
+    let method = method
+        .parse::<reqwest::Method>()
+        .map_err(|_| CmdError::from(format!("不支持的 SSE HTTP 方法: {method}")))?;
     let flag = Arc::new(AtomicBool::new(false));
     ABORT_FLAGS
         .lock()
         .unwrap()
         .insert(request_id.clone(), flag.clone());
 
-    let result = run_stream(&url, headers, &body, &on_event, &flag).await;
+    let result = run_stream(method, &url, headers, body.as_ref(), &on_event, &flag).await;
 
     ABORT_FLAGS.lock().unwrap().remove(&request_id);
     result
 }
 
 async fn run_stream(
+    method: reqwest::Method,
     url: &str,
     headers: Option<HashMap<String, String>>,
-    body: &Value,
+    body: Option<&Value>,
     on_event: &Channel<StreamFrame>,
     abort: &AtomicBool,
 ) -> CmdResult<()> {
     let mut req = CLIENT
-        .post(url)
-        .json(body)
+        .request(method, url)
         .header(reqwest::header::ACCEPT, "text/event-stream");
     if let Some(headers) = headers {
         for (k, v) in headers {
             req = req.header(k, v);
         }
     }
+    if let Some(body) = body {
+        req = req.json(body);
+    }
 
     let resp = req.send().await?;
     let status = resp.status().as_u16();
     let _ = on_event.send(StreamFrame::Meta { status });
 
-    if status >= 400 {
+    let is_event_stream = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.to_ascii_lowercase().contains("text/event-stream"));
+    if status >= 400 || !is_event_stream {
         let text = resp.text().await.unwrap_or_default();
         let _ = on_event.send(StreamFrame::Error {
-            message: format!("HTTP {status}: {text}"),
+            message: if status >= 400 {
+                format!("HTTP {status}: {text}")
+            } else {
+                format!("SSE 端点返回了非流式响应: {text}")
+            },
         });
         return Ok(());
     }
@@ -87,7 +103,7 @@ async fn run_stream(
     let mut buf: Vec<u8> = Vec::with_capacity(16 * 1024);
     let mut saw_done = false;
 
-    while let Some(chunk) = stream.next().await {
+    'stream: while let Some(chunk) = stream.next().await {
         if abort.load(Ordering::Relaxed) {
             break;
         }
@@ -97,20 +113,24 @@ async fn run_stream(
             let frame: Vec<u8> = buf.drain(..end + sep_len).collect();
             if dispatch_frame(&frame, on_event) {
                 saw_done = true;
+                break 'stream;
             }
         }
     }
 
     // 连接关闭时冲刷残余半帧（容错）。
-    if !buf.is_empty() && !abort.load(Ordering::Relaxed) {
+    if !saw_done && !buf.is_empty() && !abort.load(Ordering::Relaxed) {
         let frame = std::mem::take(&mut buf);
-        if dispatch_frame(&frame, on_event) {
-            saw_done = true;
-        }
+        saw_done = dispatch_frame(&frame, on_event);
     }
 
-    let _ = saw_done;
-    let _ = on_event.send(StreamFrame::Done);
+    if saw_done || abort.load(Ordering::Relaxed) {
+        let _ = on_event.send(StreamFrame::Done);
+    } else {
+        let _ = on_event.send(StreamFrame::Error {
+            message: "SSE 连接在 [DONE] 前关闭，可刷新会话重连".to_string(),
+        });
+    }
     Ok(())
 }
 

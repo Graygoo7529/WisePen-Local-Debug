@@ -82,6 +82,34 @@ export interface ChatRequest {
   user_defined_deny_tool_names?: string[] | null;
   user_defined_on_demand_skill_ids?: string[] | null;
   user_defined_force_enabled_skill_ids?: string[] | null;
+  client_tool_capabilities?: ClientToolCapability[];
+}
+
+export interface ClientToolCapability {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+export interface ClientToolResultSubmission {
+  tool_call_id: string;
+  output?: unknown;
+  error_text?: string;
+}
+
+export interface ToolApprovalStatusSubmission {
+  tool_call_id: string;
+  approved: boolean;
+}
+
+export interface ChatRecoverRequest {
+  session_id: string;
+  client_tool_results: ClientToolResultSubmission[];
+  tool_approval_status: ToolApprovalStatusSubmission[];
+}
+
+export interface ActiveChatTurnResponse {
+  turn_id: string | null;
 }
 
 // ============ Chat：SSE 事件（AI SDK 6.x UIMessage Stream） ============
@@ -92,6 +120,8 @@ export interface SseEvent {
   delta?: string;
   toolCallId?: string;
   toolName?: string;
+  toolDesc?: string;
+  approvalId?: string;
   input?: unknown;
   output?: unknown;
   errorText?: string;

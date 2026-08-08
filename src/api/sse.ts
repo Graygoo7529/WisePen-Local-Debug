@@ -1,7 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { buildHeaders } from "./client";
 import { useSettingsStore } from "../stores/settingsStore";
-import type { ChatRequest, SseEvent } from "../lib/types";
+import type { ChatRecoverRequest, ChatRequest, SseEvent } from "../lib/types";
 
 /** Rust 侧推送的流帧（与 src-tauri/src/sse.rs 的 StreamFrame 对应）。 */
 export type StreamFrame =
@@ -17,18 +17,20 @@ export interface StreamHandlers {
   onError?: (message: string) => void;
 }
 
-/**
- * 发起 POST /chat/completions SSE 流式对话。
- * 返回 requestId，可用 abortChat 中断。
- */
-export async function startChatCompletion(
-  body: ChatRequest,
+interface StartChatStreamOptions {
+  method: "GET" | "POST";
+  path: string;
+  body?: unknown;
+}
+
+async function startChatStream(
+  options: StartChatStreamOptions,
   handlers: StreamHandlers,
 ): Promise<string> {
   const { chatBaseUrl } = useSettingsStore.getState();
   const requestId = crypto.randomUUID();
-
   const channel = new Channel<StreamFrame>();
+
   channel.onmessage = (frame) => {
     switch (frame.kind) {
       case "meta":
@@ -46,19 +48,35 @@ export async function startChatCompletion(
     }
   };
 
-  // 不 await：invoke 的 Promise 在流结束后才 resolve；错误经 onError 上报。
-  void invoke("chat_completion", {
+  // invoke 的 Promise 在流结束后才 resolve，传输错误经 onError 上报。
+  void invoke("chat_stream", {
     requestId,
-    url: `${chatBaseUrl.replace(/\/+$/, "")}/chat/completions`,
+    method: options.method,
+    url: `${chatBaseUrl.replace(/\/+$/, "")}${options.path}`,
     headers: buildHeaders("chat"),
-    body,
+    body: options.body ?? null,
     onEvent: channel,
-  }).catch((e) => {
-    handlers.onError?.(e instanceof Error ? e.message : String(e));
+  }).catch((error) => {
+    handlers.onError?.(error instanceof Error ? error.message : String(error));
   });
 
   return requestId;
 }
+
+export const startChatCompletion = (body: ChatRequest, handlers: StreamHandlers) =>
+  startChatStream({ method: "POST", path: "/chat/completions", body }, handlers);
+
+export const reconnectChatCompletion = (sessionId: string, handlers: StreamHandlers) =>
+  startChatStream(
+    {
+      method: "GET",
+      path: `/chat/completions/stream?session_id=${encodeURIComponent(sessionId)}`,
+    },
+    handlers,
+  );
+
+export const recoverChatCompletion = (body: ChatRecoverRequest, handlers: StreamHandlers) =>
+  startChatStream({ method: "POST", path: "/chat/completions/recover", body }, handlers);
 
 export function abortChatCompletion(requestId: string): void {
   void invoke("abort_chat", { requestId }).catch(() => undefined);

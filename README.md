@@ -4,7 +4,7 @@ WisePen 本地调试与使用工作台。Tauri 2 + React 19 + TypeScript + Vite 
 
 ## 功能
 
-- **对话**：会话管理（新建/重命名/置顶/删除）、SSE 流式对话（AI SDK 6.x UIMessage Stream）、思考过程折叠展示、**工具调用的输入/输出/耗时/原始 SSE 帧检视**、请求参数面板（模型与 Provider 映射、按需 Skill、工具黑白名单、`frontend_states` 上下文模拟、`runtime_options`）、临时附件上传（OSS 预签名）与资源附件引用、历史消息全部经 `listHistoryMessages` 端点读取（无本地存储）。
+- **对话**：会话管理（新建/重命名/置顶/删除）、SSE 流式对话与 active Turn 重连、后端取消、白名单客户端工具、高危工具批准/拒绝和挂起恢复、思考过程折叠展示、**工具调用的输入/输出/耗时/原始 SSE 帧检视**、请求参数面板（模型与 Provider 映射、按需 Skill、工具黑白名单、`frontend_states` 上下文模拟、`runtime_options`）、临时附件上传（OSS 预签名）与资源附件引用、历史消息全部经 `listHistoryMessages` 端点读取（无对话历史本地存储）。
 - **Skill 工坊**：Skill 的创建、信息修改、草稿/已发布版本查询、资产（SKILL.md + references）在线编写/导入/上传/删除、发布、Fork。
 - **Agent 配置**：Agent 的创建/Fork/发布、Spec（systemPrompt/模型策略/工具与 Skill 策略/记忆策略）编辑、资产管理。
 - **模型与 Provider**：可用模型与映射查看、用户模型与 Provider 的完整 CRUD、绑定/解绑。

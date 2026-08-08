@@ -26,6 +26,12 @@ export function Composer({
 }) {
   const [query, setQuery] = useState("");
   const sending = useChatStore((s) => s.sending);
+  const waitingForTool = useChatStore((s) =>
+    s.liveTurns.some((turn) => turn.sessionId === s.currentSessionId && turn.status === "waiting"),
+  );
+  const cancelling = useChatStore((s) =>
+    s.liveTurns.some((turn) => turn.sessionId === s.currentSessionId && turn.status === "cancelling"),
+  );
   const send = useChatStore((s) => s.send);
   const abort = useChatStore((s) => s.abort);
   const uploadAttachment = useChatStore((s) => s.uploadAttachment);
@@ -46,7 +52,7 @@ export function Composer({
 
   const doSend = async () => {
     const q = query.trim();
-    if (!q || sending || uploading) return;
+    if (!q || sending || waitingForTool || uploading) return;
     setQuery("");
     await send(q);
     textareaRef.current?.focus();
@@ -135,6 +141,7 @@ export function Composer({
           value={query}
           rows={Math.min(6, Math.max(1, query.split("\n").length + 1))}
           onChange={(e) => setQuery(e.target.value)}
+          disabled={waitingForTool}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -146,7 +153,7 @@ export function Composer({
           <IconButton
             title="选择图片"
             onClick={() => void pickImages()}
-            disabled={uploading || sending}
+            disabled={uploading || sending || waitingForTool}
           >
             <ImagePlus size={16} />
           </IconButton>
@@ -173,15 +180,22 @@ export function Composer({
           )}
           {uploading && <span className="text-xs text-fg-faint">上传图片中…</span>}
           {sending ? (
-            <Button size="sm" variant="danger" icon={<Square size={13} />} onClick={abort}>
-              停止
+            <Button
+              size="sm"
+              variant="danger"
+              icon={<Square size={13} />}
+              loading={cancelling}
+              disabled={cancelling}
+              onClick={() => void abort()}
+            >
+              {cancelling ? "停止中" : "停止"}
             </Button>
           ) : (
             <Button
               size="sm"
               variant="primary"
               icon={<SendHorizonal size={14} />}
-              disabled={!query.trim() || uploading}
+              disabled={!query.trim() || uploading || waitingForTool}
               onClick={() => void doSend()}
             >
               发送

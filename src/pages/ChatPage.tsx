@@ -25,7 +25,7 @@ export default function ChatPage() {
   const loadOlderHistory = useChatStore((s) => s.loadOlderHistory);
   const liveTurns = useChatStore((s) => s.liveTurns);
   const sending = useChatStore((s) => s.sending);
-  const refreshSession = useChatStore((s) => s.refreshSession);
+  const syncCurrentTurn = useChatStore((s) => s.syncCurrentTurn);
   const fromSource = useSettingsStore((s) => s.fromSource);
   const userId = useSettingsStore((s) => s.userId);
 
@@ -73,7 +73,7 @@ export default function ChatPage() {
             )}
           </div>
           {session && (
-            <IconButton title="刷新会话信息" onClick={() => void refreshSession()}>
+            <IconButton title="刷新并恢复会话" onClick={() => void syncCurrentTurn()}>
               <RefreshCw size={14} />
             </IconButton>
           )}
@@ -126,7 +126,7 @@ export default function ChatPage() {
                 <MessageItem
                   role="assistant"
                   parts={partsFromLiveTurn(turn)}
-                  streaming={turn.status === "streaming"}
+                  streaming={turn.status === "streaming" || turn.status === "cancelling"}
                   rawEvents={turn.rawEvents}
                 />
               </div>
