@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { FilePlus2, FolderOpen, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Eye, FilePlus2, FolderOpen, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { agentApi } from "../../api/asset";
+import { storageApi } from "../../api/storage";
 import { validateAssetLocation } from "../../lib/assetPath";
 import { formatBytes } from "../../lib/format";
 import type { AgentVersionBundle, AssetInfo, AssetResourceType } from "../../lib/types";
@@ -61,6 +62,30 @@ export function AgentAssetsTab({
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<AssetInfo | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [loadingAssetId, setLoadingAssetId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ asset: AssetInfo; content: string } | null>(null);
+
+  const loadAsset = async (asset: AssetInfo, mode: "view" | "edit") => {
+    setLoadingAssetId(asset.id);
+    try {
+      const content = await storageApi.loadText(asset.objectKey);
+      if (mode === "view") {
+        setPreview({ asset, content });
+      } else {
+        setDraft({
+          mode: "edit",
+          name: asset.name,
+          path: asset.path,
+          assetResourceType: asset.assetResourceType,
+          content,
+        });
+      }
+    } catch (error) {
+      toast.error(`读取资产失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setLoadingAssetId(null);
+    }
+  };
 
   const upload = async () => {
     if (!draft) return;
@@ -213,19 +238,19 @@ export function AgentAssetsTab({
                     {a.path} · {formatBytes(a.size)}
                   </div>
                 </div>
+                <IconButton
+                  title="查看内容"
+                  disabled={a.uploadStatus !== "AVAILABLE" || loadingAssetId === a.id}
+                  onClick={() => void loadAsset(a, "view")}
+                >
+                  <Eye size={13} />
+                </IconButton>
                 {editable && (
                   <>
                     <IconButton
-                      title="编辑（重新上传内容）"
-                      onClick={() =>
-                        setDraft({
-                          mode: "edit",
-                          name: a.name,
-                          path: a.path,
-                          assetResourceType: a.assetResourceType,
-                          content: "",
-                        })
-                      }
+                      title="载入并编辑"
+                      disabled={a.uploadStatus !== "AVAILABLE" || loadingAssetId === a.id}
+                      onClick={() => void loadAsset(a, "edit")}
                     >
                       <Pencil size={13} />
                     </IconButton>
@@ -286,7 +311,7 @@ export function AgentAssetsTab({
               label="内容"
               hint={
                 draft.mode === "edit"
-                  ? "后端未提供资产内容下载端点，请粘贴完整新内容，上传后整体覆盖原文件"
+                  ? "已载入远端正文；上传后整体覆盖原文件"
                   : undefined
               }
             >
@@ -300,6 +325,22 @@ export function AgentAssetsTab({
             </Field>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={preview !== null}
+        onClose={() => setPreview(null)}
+        title={preview ? `${preview.asset.path}/${preview.asset.name}`.replace(/\/+/g, "/") : "资产内容"}
+        width="max-w-4xl"
+        footer={<Button onClick={() => setPreview(null)}>关闭</Button>}
+      >
+        <Textarea
+          value={preview?.content ?? ""}
+          readOnly
+          rows={24}
+          className="font-mono text-xs"
+          spellCheck={false}
+        />
       </Modal>
 
       <ConfirmModal

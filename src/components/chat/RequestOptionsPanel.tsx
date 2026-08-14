@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, RotateCcw, X } from "lucide-react";
 import { Badge, Button, Field, Input, Select, Switch, Textarea } from "../ui";
 import { Modal } from "../Modal";
 import { chatApi } from "../../api/chat";
@@ -13,10 +13,12 @@ function TagInput({
   value,
   onChange,
   placeholder,
+  disabled,
 }: {
   value: string[];
   onChange: (v: string[]) => void;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   const [text, setText] = useState("");
   const commit = () => {
@@ -34,6 +36,7 @@ function TagInput({
           {tag}
           <button
             className="cursor-pointer text-fg-faint hover:text-danger"
+            disabled={disabled}
             onClick={() => onChange(value.filter((t) => t !== tag))}
           >
             <X size={11} />
@@ -43,6 +46,7 @@ function TagInput({
       <input
         className="min-w-[120px] flex-1 bg-transparent py-0.5 text-[13px] outline-none placeholder:text-fg-faint"
         value={text}
+        disabled={disabled}
         placeholder={value.length === 0 ? placeholder : ""}
         onChange={(e) => {
           if (e.target.value.includes(",")) {
@@ -73,6 +77,8 @@ export function RequestOptionsPanel() {
   const options = useChatStore((s) => s.options);
   const currentSession = useChatStore((s) => s.currentSession);
   const setOptions = useChatStore((s) => s.setOptions);
+  const agentBaseline = useChatStore((s) => s.agentRequestBaseline);
+  const applyAgentBaseline = useChatStore((s) => s.applyAgentRequestBaseline);
   const [models, setModels] = useState<AvailableModels | null>(null);
   const [agents, setAgents] = useState<ResourceItem[]>([]);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
@@ -112,6 +118,16 @@ export function RequestOptionsPanel() {
       ? [{ value: agentValue, label: `手工 Agent（${agentValue}）` }]
       : []),
   ];
+  const hasAgentOverride = agentBaseline
+    ? options.model !== agentBaseline.model ||
+      options.providerId !== agentBaseline.providerId ||
+      !sameValues(options.allowToolNames, agentBaseline.allowToolNames) ||
+      !sameValues(options.denyToolNames, agentBaseline.denyToolNames) ||
+      !sameValues(options.onDemandSkillIds, agentBaseline.onDemandSkillIds)
+    : false;
+  const modelOverrideDisabled = Boolean(agentBaseline && !agentBaseline.allowModelOverride);
+  const toolOverrideDisabled = Boolean(agentBaseline && !agentBaseline.enableUseTool);
+  const skillOverrideDisabled = Boolean(agentBaseline && !agentBaseline.enableUseSkill);
 
   const addState = (preset?: FrontendState) => {
     setOptions({
@@ -150,15 +166,33 @@ export function RequestOptionsPanel() {
       </div>
 
       {currentSession?.agent_id && (
-        <div className="text-xs text-fg-muted">
-          当前绑定版本：<span className="font-mono text-accent">v{currentSession.agent_version ?? "-"}</span>
+        <div className="flex items-center gap-2 text-xs text-fg-muted">
+          <span>
+            当前绑定版本：<span className="font-mono text-accent">v{currentSession.agent_version ?? "-"}</span>
+          </span>
+          {agentBaseline && <Badge tone="green">Agent 参数已载入</Badge>}
+          {hasAgentOverride && <Badge tone="yellow">存在临时覆盖</Badge>}
+          {agentBaseline && hasAgentOverride && (
+            <Button
+              size="xs"
+              variant="ghost"
+              icon={<RotateCcw size={12} />}
+              onClick={applyAgentBaseline}
+            >
+              恢复 Agent 配置
+            </Button>
+          )}
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="模型">
+        <Field
+          label="模型"
+          hint={modelOverrideDisabled ? "Agent 配置不允许请求覆盖模型" : undefined}
+        >
           <Select
             value={options.model}
+            disabled={modelOverrideDisabled}
             onChange={(e) => setOptions({ model: e.target.value, providerId: "" })}
             options={[
               { value: "", label: "服务端默认" },
@@ -175,6 +209,7 @@ export function RequestOptionsPanel() {
         <Field label="Provider 映射" hint="缺省用首选映射">
           <Select
             value={options.providerId}
+            disabled={modelOverrideDisabled}
             onChange={(e) => setOptions({ providerId: e.target.value })}
             options={[
               { value: "", label: "缺省（首选）" },
@@ -187,7 +222,10 @@ export function RequestOptionsPanel() {
         </Field>
       </div>
 
-      <Field label="按需 Skill（user_defined_on_demand_skill_ids）">
+      <Field
+        label="按需 Skill（user_defined_on_demand_skill_ids）"
+        hint={skillOverrideDisabled ? "当前 Agent 已关闭 Skill" : undefined}
+      >
         <div className="flex flex-wrap items-center gap-1.5">
           {options.onDemandSkillIds.map((id) => (
             <Badge key={id} tone="accent" className="font-mono">
@@ -195,6 +233,7 @@ export function RequestOptionsPanel() {
               <button
                 className="cursor-pointer hover:text-danger"
                 title="移除"
+                disabled={skillOverrideDisabled}
                 onClick={() =>
                   setOptions({ onDemandSkillIds: options.onDemandSkillIds.filter((x) => x !== id) })
                 }
@@ -203,16 +242,25 @@ export function RequestOptionsPanel() {
               </button>
             </Badge>
           ))}
-          <Button size="xs" variant="outline" onClick={() => setSkillPickerOpen(true)}>
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={skillOverrideDisabled}
+            onClick={() => setSkillPickerOpen(true)}
+          >
             从资源选择
           </Button>
         </div>
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="工具白名单（allow_tool_names）">
+        <Field
+          label="工具白名单（allow_tool_names）"
+          hint={toolOverrideDisabled ? "当前 Agent 已关闭工具" : undefined}
+        >
           <TagInput
             value={options.allowToolNames}
+            disabled={toolOverrideDisabled}
             onChange={(v) => setOptions({ allowToolNames: v })}
             placeholder="回车添加工具名"
           />
@@ -220,6 +268,7 @@ export function RequestOptionsPanel() {
         <Field label="工具黑名单（deny_tool_names）">
           <TagInput
             value={options.denyToolNames}
+            disabled={toolOverrideDisabled}
             onChange={(v) => setOptions({ denyToolNames: v })}
             placeholder="回车添加工具名"
           />
@@ -296,6 +345,10 @@ export function RequestOptionsPanel() {
       />
     </div>
   );
+}
+
+function sameValues(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 /** Skill 资源选择器：列出资源服务中的 SKILL 资源供勾选。 */

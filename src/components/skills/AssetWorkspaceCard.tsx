@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { FilePlus2, FolderOpen, Layers, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Eye, FilePlus2, FolderOpen, Layers, Pencil, RefreshCw, Trash2, Upload } from "lucide-react";
 import { skillApi } from "../../api/asset";
+import { storageApi } from "../../api/storage";
 import { validateAssetLocation } from "../../lib/assetPath";
 import { formatBytes } from "../../lib/format";
-import type { AssetResourceType, AssetUploadTicket, SkillVersionBundle } from "../../lib/types";
+import type { AssetInfo, AssetResourceType, AssetUploadTicket, SkillVersionBundle } from "../../lib/types";
 import { toast } from "../../stores/toastStore";
-import { ConfirmModal } from "../Modal";
-import { Badge, Button, EmptyState, IconButton, SectionCard, Spinner } from "../ui";
+import { ConfirmModal, Modal } from "../Modal";
+import { Badge, Button, EmptyState, IconButton, SectionCard, Spinner, Textarea } from "../ui";
 import {
   REFERENCE_TEMPLATE,
   SKILL_MD_TEMPLATE,
@@ -43,6 +44,9 @@ export function AssetWorkspaceCard({
   const [uploading, setUploading] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingAssets, setDeletingAssets] = useState(false);
+  const [loadingStructure, setLoadingStructure] = useState(false);
+  const [loadingAssetId, setLoadingAssetId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ asset: AssetInfo; content: string } | null>(null);
 
   useEffect(() => {
     setSelectedAssetIds(new Set());
@@ -51,19 +55,59 @@ export function AssetWorkspaceCard({
   const patchEntry = (key: string, patch: Partial<WorkspaceEntry>) =>
     onEntriesChange(entries.map((entry) => (entry.key === key ? { ...entry, ...patch } : entry)));
 
-  const loadStructure = () => {
+  const loadStructure = async () => {
     if (!bundle) return;
-    onEntriesChange(
-      bundle.assets.map((asset) => ({
+    setLoadingStructure(true);
+    try {
+      const nextEntries = await Promise.all(
+        bundle.assets.map(async (asset) => ({
+          key: nextKey(),
+          name: asset.name,
+          path: asset.path,
+          assetResourceType: asset.assetResourceType,
+          content: await storageApi.loadText(asset.objectKey),
+          remote: asset.id,
+        })),
+      );
+      onEntriesChange(nextEntries);
+      toast.success(`已载入 ${bundle.assets.length} 个远端文件及正文`);
+    } catch (error) {
+      toast.error(`载入远端文件失败：${errText(error)}`);
+    } finally {
+      setLoadingStructure(false);
+    }
+  };
+
+  const loadRemoteAsset = async (asset: AssetInfo, mode: "view" | "edit") => {
+    setLoadingAssetId(asset.id);
+    try {
+      const content = await storageApi.loadText(asset.objectKey);
+      if (mode === "view") {
+        setPreview({ asset, content });
+        return;
+      }
+      const nextEntry: WorkspaceEntry = {
         key: nextKey(),
         name: asset.name,
         path: asset.path,
         assetResourceType: asset.assetResourceType,
-        content: "",
+        content,
         remote: asset.id,
-      })),
-    );
-    toast.success(`已载入 ${bundle.assets.length} 个文件条目`);
+      };
+      const existing = entries.find((entry) => entry.remote === asset.id);
+      onEntriesChange(
+        existing
+          ? entries.map((entry) =>
+              entry.remote === asset.id ? { ...entry, ...nextEntry, key: entry.key } : entry,
+            )
+          : [...entries, nextEntry],
+      );
+      toast.success(`已将 ${asset.name} 载入本地工作区`);
+    } catch (error) {
+      toast.error(`读取远端文件失败：${errText(error)}`);
+    } finally {
+      setLoadingAssetId(null);
+    }
   };
 
   const addSkillMd = () =>
@@ -248,6 +292,7 @@ export function AssetWorkspaceCard({
                     <th className="px-3 py-2 font-medium">类型</th>
                     <th className="px-3 py-2 font-medium">大小</th>
                     <th className="px-3 py-2 font-medium">状态</th>
+                    <th className="w-20 px-3 py-2 font-medium">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
@@ -281,6 +326,26 @@ export function AssetWorkspaceCard({
                           {asset.uploadStatus === "AVAILABLE" ? "可用" : "上传中"}
                         </Badge>
                       </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1">
+                          <IconButton
+                            title="查看内容"
+                            disabled={asset.uploadStatus !== "AVAILABLE" || loadingAssetId === asset.id}
+                            onClick={() => void loadRemoteAsset(asset, "view")}
+                          >
+                            <Eye size={13} />
+                          </IconButton>
+                          {editable && (
+                            <IconButton
+                              title="载入工作区编辑"
+                              disabled={asset.uploadStatus !== "AVAILABLE" || loadingAssetId === asset.id}
+                              onClick={() => void loadRemoteAsset(asset, "edit")}
+                            >
+                              <Pencil size={13} />
+                            </IconButton>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -293,8 +358,14 @@ export function AssetWorkspaceCard({
           <div>
             <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2">
               <span className="mr-1 text-[13px] font-medium text-fg">本地工作区</span>
-              <Button size="xs" variant="outline" icon={<Layers size={12} />} onClick={loadStructure}>
-                载入远端结构
+              <Button
+                size="xs"
+                variant="outline"
+                icon={<Layers size={12} />}
+                loading={loadingStructure}
+                onClick={() => void loadStructure()}
+              >
+                载入远端内容
               </Button>
               <Button size="xs" variant="outline" icon={<FilePlus2 size={12} />} onClick={addSkillMd}>
                 新建 SKILL.md
@@ -358,7 +429,7 @@ export function AssetWorkspaceCard({
                     </div>
                     <textarea
                       value={entry.content}
-                      placeholder={entry.remote ? "远端接口不返回文件内容；填入完整内容后可覆盖上传" : "文件内容"}
+                      placeholder="文件内容"
                       spellCheck={false}
                       rows={8}
                       className="w-full resize-y border-0 bg-bg-elev px-3 py-2 font-mono text-xs leading-relaxed text-fg placeholder:text-fg-faint focus:outline-none"
@@ -371,6 +442,22 @@ export function AssetWorkspaceCard({
           </div>
         )}
       </SectionCard>
+
+      <Modal
+        open={preview !== null}
+        onClose={() => setPreview(null)}
+        title={preview ? `${preview.asset.path}/${preview.asset.name}`.replace(/\/+/g, "/") : "文件内容"}
+        width="max-w-4xl"
+        footer={<Button onClick={() => setPreview(null)}>关闭</Button>}
+      >
+        <Textarea
+          value={preview?.content ?? ""}
+          readOnly
+          rows={24}
+          className="font-mono text-xs"
+          spellCheck={false}
+        />
+      </Modal>
 
       <ConfirmModal
         open={deleteOpen}

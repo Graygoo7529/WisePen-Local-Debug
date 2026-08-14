@@ -65,3 +65,31 @@ pub async fn rest_request(
         elapsed_ms,
     })
 }
+
+/// 下载限时 URL 指向的 UTF-8 文本，供资源编辑器读取对象存储正文。
+#[tauri::command]
+pub async fn http_get_text(url: String, max_bytes: Option<u64>) -> CmdResult<String> {
+    let limit = max_bytes.unwrap_or(4 * 1024 * 1024);
+    let resp = CLIENT
+        .get(&url)
+        .timeout(Duration::from_secs(60))
+        .send()
+        .await?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(CmdError::from(format!(
+            "下载失败: HTTP {}",
+            status.as_u16()
+        )));
+    }
+    if let Some(length) = resp.content_length() {
+        if length > limit {
+            return Err(CmdError::from(format!("文件超过读取上限: {limit} bytes")));
+        }
+    }
+    let bytes = resp.bytes().await?;
+    if bytes.len() as u64 > limit {
+        return Err(CmdError::from(format!("文件超过读取上限: {limit} bytes")));
+    }
+    String::from_utf8(bytes.to_vec()).map_err(|_| CmdError::from("文件不是有效的 UTF-8 文本"))
+}

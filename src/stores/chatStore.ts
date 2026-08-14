@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { chatApi } from "../api/chat";
+import { agentApi } from "../api/asset";
 import {
   abortChatCompletion,
   reconnectChatCompletion,
@@ -11,6 +12,7 @@ import {
 import { ApiError } from "../api/client";
 import { toast } from "./toastStore";
 import { useSettingsStore } from "./settingsStore";
+import { normalizeAgentSpec } from "../lib/agentSpec";
 import {
   CLIENT_TOOL_CAPABILITIES,
   executeClientTool as runClientTool,
@@ -101,6 +103,21 @@ export interface RequestOptions {
   denyToolNames: string[];
   onDemandSkillIds: string[];
   frontendStates: FrontendState[];
+}
+
+export interface AgentRequestBaseline {
+  contextKey: string;
+  agentId: string;
+  version: number;
+  model: string;
+  providerId: string;
+  allowModelOverride: boolean;
+  enableUseTool: boolean;
+  allowToolNames: string[];
+  denyToolNames: string[];
+  enableUseSkill: boolean;
+  onDemandSkillIds: string[];
+  forceEnabledSkillIds: string[];
 }
 
 export const defaultRequestOptions = (): RequestOptions => ({
@@ -240,6 +257,7 @@ interface ChatState {
   activeRequestId: string | null;
   userDefinedAttachmentIds: string[];
   options: RequestOptions;
+  agentRequestBaseline: AgentRequestBaseline | null;
 
   loadSessions: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
@@ -251,6 +269,7 @@ interface ChatState {
   togglePin: (id: string, pin: boolean) => Promise<void>;
   loadOlderHistory: () => Promise<void>;
   setOptions: (patch: Partial<RequestOptions>) => void;
+  applyAgentRequestBaseline: () => void;
   send: (query: string) => Promise<void>;
   abort: () => Promise<void>;
   executeClientTool: (turnId: string, toolCallId: string) => Promise<void>;
@@ -492,6 +511,42 @@ export const useChatStore = create<ChatState>((set, getState) => {
     }
   };
 
+  const loadAgentRequestBaseline = async (session: SessionInfo): Promise<void> => {
+    if (!session.agent_id || !session.agent_version) return;
+    const contextKey = `session:${session.id}:${session.agent_id}:v${session.agent_version}`;
+    try {
+      const bundle = await agentApi.getAgentVersionBundleInfo(
+        session.agent_id,
+        session.agent_version,
+      );
+      if (getState().currentSessionId !== session.id) return;
+      const spec = normalizeAgentSpec(bundle.spec);
+      const policy = spec.toolAndSkillPolicy;
+      const baseline: AgentRequestBaseline = {
+        contextKey,
+        agentId: session.agent_id,
+        version: bundle.version,
+        model: spec.modelPolicy.defaultModelId,
+        providerId: spec.modelPolicy.defaultProviderId,
+        allowModelOverride: spec.modelPolicy.allowRequestOverride,
+        enableUseTool: policy.enableUseTool,
+        allowToolNames: policy.enableUseTool ? policy.allowToolNames : [],
+        denyToolNames: policy.enableUseTool ? policy.denyToolNames : [],
+        enableUseSkill: policy.enableUseSkill,
+        onDemandSkillIds: policy.enableUseSkill ? policy.onDemandSkillIds : [],
+        forceEnabledSkillIds: policy.enableUseSkill ? policy.forceEnabledSkillIds : [],
+      };
+      set((state) => ({
+        agentRequestBaseline: baseline,
+        options: applyBaselineToOptions(state.options, baseline),
+      }));
+    } catch (error) {
+      if (getState().currentSessionId === session.id) {
+        toast.error(`加载 Agent 请求参数失败：${errText(error)}`);
+      }
+    }
+  };
+
   return {
   sessions: [],
   sessionsLoading: false,
@@ -507,6 +562,7 @@ export const useChatStore = create<ChatState>((set, getState) => {
   activeRequestId: null,
   userDefinedAttachmentIds: [],
   options: defaultRequestOptions(),
+  agentRequestBaseline: null,
 
   loadSessions: async () => {
     set({ sessionsLoading: true });
@@ -531,6 +587,8 @@ export const useChatStore = create<ChatState>((set, getState) => {
       sending: false,
       activeRequestId: null,
       userDefinedAttachmentIds: [],
+      options: defaultRequestOptions(),
+      agentRequestBaseline: null,
     });
     set({ historyLoading: true });
     const [, history] = await Promise.all([
@@ -552,6 +610,8 @@ export const useChatStore = create<ChatState>((set, getState) => {
         return null;
       }),
     ]);
+    const session = getState().currentSession;
+    if (session?.id === id) await loadAgentRequestBaseline(session);
     await restoreSessionTurn(id, history);
   },
 
@@ -624,7 +684,9 @@ export const useChatStore = create<ChatState>((set, getState) => {
         sending: false,
         activeRequestId: null,
         userDefinedAttachmentIds: [],
+        agentRequestBaseline: null,
       }));
+      await loadAgentRequestBaseline(session);
       toast.success("已创建新会话");
       return session;
     } catch (e) {
@@ -651,6 +713,8 @@ export const useChatStore = create<ChatState>((set, getState) => {
               sending: false,
               activeRequestId: null,
               userDefinedAttachmentIds: [],
+              options: defaultRequestOptions(),
+              agentRequestBaseline: null,
             }
           : {}),
       }));
@@ -703,6 +767,13 @@ export const useChatStore = create<ChatState>((set, getState) => {
 
   setOptions: (patch) => set((s) => ({ options: { ...s.options, ...patch } })),
 
+  applyAgentRequestBaseline: () =>
+    set((state) => ({
+      options: state.agentRequestBaseline
+        ? applyBaselineToOptions(state.options, state.agentRequestBaseline)
+        : state.options,
+    })),
+
   send: async (query) => {
     const state = getState();
     if (state.sending || !query.trim()) return;
@@ -724,8 +795,10 @@ export const useChatStore = create<ChatState>((set, getState) => {
           currentSessionId: session.id,
           currentSession: session,
           history: [],
+          agentRequestBaseline: null,
         }));
         sessionId = session.id;
+        await loadAgentRequestBaseline(session);
       } catch (e) {
         toast.error(`创建会话失败：${errText(e)}`);
         return;
@@ -1001,6 +1074,20 @@ export const useChatStore = create<ChatState>((set, getState) => {
   },
   };
 });
+
+function applyBaselineToOptions(
+  options: RequestOptions,
+  baseline: AgentRequestBaseline,
+): RequestOptions {
+  return {
+    ...options,
+    model: baseline.model,
+    providerId: baseline.providerId,
+    allowToolNames: [...baseline.allowToolNames],
+    denyToolNames: [...baseline.denyToolNames],
+    onDemandSkillIds: [...baseline.onDemandSkillIds],
+  };
+}
 
 interface PendingTurnSnapshot {
   query: string;

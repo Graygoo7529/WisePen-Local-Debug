@@ -2,10 +2,18 @@ import { useEffect, useState } from "react";
 import { Save } from "lucide-react";
 import { agentApi } from "../../api/asset";
 import { chatApi } from "../../api/chat";
+import { resourceApi } from "../../api/resource";
 import { normalizeAgentSpec } from "../../lib/agentSpec";
 import { prettyJson } from "../../lib/format";
-import type { AgentSpec, AgentVersionBundle, AvailableModels } from "../../lib/types";
+import type {
+  AgentSpec,
+  AgentVersionBundle,
+  AvailableModels,
+  ResourceItem,
+  ToolInfo,
+} from "../../lib/types";
 import { toast } from "../../stores/toastStore";
+import { CapabilityPickerModal, type CapabilityOption } from "./CapabilityPickerModal";
 import {
   Button,
   EmptyState,
@@ -20,6 +28,10 @@ import {
 } from "../ui";
 
 type EditorMode = "form" | "json";
+type PolicyField = keyof Pick<
+  AgentSpec["toolAndSkillPolicy"],
+  "allowToolNames" | "denyToolNames" | "onDemandSkillIds" | "forceEnabledSkillIds"
+>;
 
 export function AgentSpecTab({
   resourceId,
@@ -43,6 +55,9 @@ export function AgentSpecTab({
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [models, setModels] = useState<AvailableModels | null>(null);
+  const [tools, setTools] = useState<ToolInfo[]>([]);
+  const [skills, setSkills] = useState<ResourceItem[]>([]);
+  const [pickerField, setPickerField] = useState<PolicyField | null>(null);
 
   useEffect(() => {
     const next = normalizeAgentSpec(bundle?.spec);
@@ -55,6 +70,11 @@ export function AgentSpecTab({
 
   useEffect(() => {
     chatApi.listAvailableModels().then(setModels).catch(() => setModels(null));
+    chatApi.listUserTools().then((response) => setTools(response.tools)).catch(() => setTools([]));
+    resourceApi
+      .listResources({ resourceType: "SKILL", size: 100 })
+      .then((response) => setSkills(response.list))
+      .catch(() => setSkills([]));
   }, []);
 
   if (loading && !bundle) {
@@ -74,21 +94,8 @@ export function AgentSpecTab({
     setJsonError(null);
   };
 
-  const updateList = (
-    field: keyof Pick<
-      AgentSpec["toolAndSkillPolicy"],
-      "allowToolNames" | "denyToolNames" | "onDemandSkillIds" | "forceEnabledSkillIds"
-    >,
-    value: string,
-  ) => {
-    const items = Array.from(
-      new Set(
-        value
-          .split(/[\n,]/)
-          .map((item) => item.trim())
-          .filter(Boolean),
-      ),
-    );
+  const updatePolicyList = (field: PolicyField, values: string[]) => {
+    const items = Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
     const nextPolicy = { ...spec.toolAndSkillPolicy, [field]: items };
     if (field === "allowToolNames") {
       nextPolicy.denyToolNames = nextPolicy.denyToolNames.filter((item) => !items.includes(item));
@@ -107,6 +114,10 @@ export function AgentSpecTab({
       ...spec,
       toolAndSkillPolicy: nextPolicy,
     });
+  };
+
+  const updateList = (field: PolicyField, value: string) => {
+    updatePolicyList(field, value.split(/[\n,]/));
   };
 
   const onTextChange = (value: string) => {
@@ -188,6 +199,18 @@ export function AgentSpecTab({
       label: `${spec.modelPolicy.defaultModelId} · ${spec.modelPolicy.defaultProviderId || "默认 Provider"}`,
     });
   }
+  const toolOptions: CapabilityOption[] = tools.map((tool) => ({
+    id: tool.name,
+    name: tool.name,
+    description: tool.description,
+    unavailable: !tool.enabled || (tool.requires_config && !tool.configured),
+  }));
+  const skillOptions: CapabilityOption[] = skills.map((skill) => ({
+    id: skill.resourceId,
+    name: skill.resourceName,
+    description: typeof skill.preview === "string" ? skill.preview : undefined,
+  }));
+  const pickerIsTool = pickerField === "allowToolNames" || pickerField === "denyToolNames";
 
   return (
     <SectionCard
@@ -344,24 +367,28 @@ export function AgentSpecTab({
                 label="允许的工具名"
                 values={policy.allowToolNames}
                 disabled={disabled || !policy.enableUseTool}
+                onPick={() => setPickerField("allowToolNames")}
                 onChange={(value) => updateList("allowToolNames", value)}
               />
               <ListField
                 label="禁用的工具名"
                 values={policy.denyToolNames}
                 disabled={disabled || !policy.enableUseTool}
+                onPick={() => setPickerField("denyToolNames")}
                 onChange={(value) => updateList("denyToolNames", value)}
               />
               <ListField
                 label="按需 Skill ID"
                 values={policy.onDemandSkillIds}
                 disabled={disabled || !policy.enableUseSkill}
+                onPick={() => setPickerField("onDemandSkillIds")}
                 onChange={(value) => updateList("onDemandSkillIds", value)}
               />
               <ListField
                 label="固定启用 Skill ID"
                 values={policy.forceEnabledSkillIds}
                 disabled={disabled || !policy.enableUseSkill}
+                onPick={() => setPickerField("forceEnabledSkillIds")}
                 onChange={(value) => updateList("forceEnabledSkillIds", value)}
               />
             </div>
@@ -478,6 +505,16 @@ export function AgentSpecTab({
           </div>
         </div>
       )}
+      <CapabilityPickerModal
+        open={pickerField !== null}
+        title={pickerIsTool ? "选择工具" : "选择 Skill"}
+        items={pickerIsTool ? toolOptions : skillOptions}
+        selected={pickerField ? policy[pickerField] : []}
+        onClose={() => setPickerField(null)}
+        onConfirm={(values) => {
+          if (pickerField) updatePolicyList(pickerField, values);
+        }}
+      />
     </SectionCard>
   );
 }
@@ -509,15 +546,22 @@ function ListField({
   label,
   values,
   disabled,
+  onPick,
   onChange,
 }: {
   label: string;
   values: string[];
   disabled: boolean;
+  onPick: () => void;
   onChange: (value: string) => void;
 }) {
   return (
     <Field label={label} hint="每行一个值，也可用逗号分隔">
+      <div className="mb-1.5 flex justify-end">
+        <Button size="xs" variant="outline" disabled={disabled} onClick={onPick}>
+          从列表选择
+        </Button>
+      </div>
       <Textarea
         value={values.join("\n")}
         disabled={disabled}
