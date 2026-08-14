@@ -10,11 +10,11 @@ export const DEFAULT_AGENT_SPEC: AgentSpec = {
   },
   toolAndSkillPolicy: {
     enableUseTool: true,
-    allowToolNames: [],
-    denyToolNames: [],
+    toolSelectionDefaultEnabled: true,
+    toolSelectionOverrides: {},
     enableUseSkill: true,
     onDemandSkillIds: [],
-    forceEnabledSkillIds: [],
+    skillMatchTopK: 20,
   },
   memoryPolicy: {
     enableChatMemory: true,
@@ -44,13 +44,19 @@ export function normalizeAgentSpec(spec?: Partial<AgentSpec> | null): AgentSpec 
       enableUseTool:
         spec?.toolAndSkillPolicy?.enableUseTool ??
         DEFAULT_AGENT_SPEC.toolAndSkillPolicy.enableUseTool,
-      allowToolNames: [...(spec?.toolAndSkillPolicy?.allowToolNames ?? [])],
-      denyToolNames: [...(spec?.toolAndSkillPolicy?.denyToolNames ?? [])],
+      toolSelectionDefaultEnabled:
+        spec?.toolAndSkillPolicy?.toolSelectionDefaultEnabled ??
+        DEFAULT_AGENT_SPEC.toolAndSkillPolicy.toolSelectionDefaultEnabled,
+      toolSelectionOverrides: {
+        ...(spec?.toolAndSkillPolicy?.toolSelectionOverrides ?? {}),
+      },
       enableUseSkill:
         spec?.toolAndSkillPolicy?.enableUseSkill ??
         DEFAULT_AGENT_SPEC.toolAndSkillPolicy.enableUseSkill,
       onDemandSkillIds: [...(spec?.toolAndSkillPolicy?.onDemandSkillIds ?? [])],
-      forceEnabledSkillIds: [...(spec?.toolAndSkillPolicy?.forceEnabledSkillIds ?? [])],
+      skillMatchTopK:
+        spec?.toolAndSkillPolicy?.skillMatchTopK ??
+        DEFAULT_AGENT_SPEC.toolAndSkillPolicy.skillMatchTopK,
     },
     memoryPolicy: {
       enableChatMemory:

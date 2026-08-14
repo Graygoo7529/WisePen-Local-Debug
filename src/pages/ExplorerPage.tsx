@@ -58,10 +58,9 @@ export const ENDPOINT_PRESETS: EndpointPreset[] = [
       runtime_options: {},
       frontend_states: null,
       user_defined_attachment_ids: null,
-      user_defined_allow_tool_names: null,
-      user_defined_deny_tool_names: null,
+      tool_selection_default_enabled: null,
+      tool_selection_overrides: null,
       user_defined_on_demand_skill_ids: null,
-      user_defined_force_enabled_skill_ids: null,
       client_tool_capabilities: [
         {
           name: "local_debug_echo",
@@ -300,12 +299,18 @@ export const ENDPOINT_PRESETS: EndpointPreset[] = [
     label: "解绑模型与 Provider",
     bodyTemplate: { model_id: "", provider_id: "" },
   },
-  // ---- Chat：Tool / MCP（9）----
+  // ---- Chat：Tool / MCP（10）----
   {
     service: "chat",
     method: "GET",
     path: "/chat/tool/listUserTools",
     label: "查询用户 Tool 列表",
+  },
+  {
+    service: "chat",
+    method: "GET",
+    path: "/chat/tool/listAvailableTools",
+    label: "查询全部可用 Tool",
   },
   {
     service: "chat",
@@ -489,11 +494,11 @@ export const ENDPOINT_PRESETS: EndpointPreset[] = [
         modelPolicy: { defaultModelId: "", defaultProviderId: "", allowRequestOverride: true },
         toolAndSkillPolicy: {
           enableUseTool: true,
-          allowToolNames: [],
-          denyToolNames: [],
+          toolSelectionDefaultEnabled: true,
+          toolSelectionOverrides: {},
           enableUseSkill: true,
           onDemandSkillIds: [],
-          forceEnabledSkillIds: [],
+          skillMatchTopK: 20,
         },
         memoryPolicy: {
           enableChatMemory: true,

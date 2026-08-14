@@ -346,7 +346,10 @@ function BuiltinToolsTab() {
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="font-mono text-sm font-semibold text-fg">{tool.name}</span>
+                    <span className="text-sm font-semibold text-fg">
+                      {tool.display_name || tool.name}
+                    </span>
+                    <Badge tone="gray">{tool.selection_mode}</Badge>
                     {tool.requires_config &&
                       (tool.configured ? (
                         <Badge tone="green">已配置</Badge>
@@ -359,6 +362,7 @@ function BuiltinToolsTab() {
                       </Badge>
                     ))}
                   </div>
+                  <div className="mt-1 font-mono text-[11px] text-fg-faint">{tool.name}</div>
                   <p className="mt-1.5 text-[13px] leading-5 text-fg-muted">
                     {tool.description || "（无描述）"}
                   </p>

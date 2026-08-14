@@ -6,7 +6,17 @@ import { chatApi } from "../../api/chat";
 import { resourceApi } from "../../api/resource";
 import { toast } from "../../stores/toastStore";
 import { useChatStore } from "../../stores/chatStore";
-import type { AvailableModels, FrontendState, ModelInfo, ResourceItem } from "../../lib/types";
+import type {
+  AvailableModels,
+  FrontendState,
+  ModelInfo,
+  ResourceItem,
+  ToolInfo,
+} from "../../lib/types";
+import {
+  CapabilityPickerModal,
+  type CapabilityOption,
+} from "../agents/CapabilityPickerModal";
 
 /** 字符串数组输入：回车/逗号成 chip。 */
 function TagInput({
@@ -72,7 +82,7 @@ function TagInput({
   );
 }
 
-/** 对话请求参数面板：模型、Skill、工具名单、frontend_states 上下文模拟、runtime_options。 */
+/** 对话请求参数面板：模型、Skill、工具策略、frontend_states 上下文模拟、runtime_options。 */
 export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
   const options = useChatStore((s) => s.options);
   const currentSession = useChatStore((s) => s.currentSession);
@@ -81,7 +91,9 @@ export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
   const applyAgentBaseline = useChatStore((s) => s.applyAgentRequestBaseline);
   const [models, setModels] = useState<AvailableModels | null>(null);
   const [agents, setAgents] = useState<ResourceItem[]>([]);
+  const [tools, setTools] = useState<ToolInfo[]>([]);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const [toolPickerValue, setToolPickerValue] = useState<boolean | null>(null);
 
   useEffect(() => {
     chatApi
@@ -99,6 +111,13 @@ export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
       .catch(() => {
         /* Agent 列表不可用时仍可手工输入 Agent ID */
       });
+  }, []);
+
+  useEffect(() => {
+    chatApi
+      .listAvailableTools()
+      .then((response) => setTools(response.tools))
+      .catch(() => setTools([]));
   }, []);
 
   const allModels: ModelInfo[] = models
@@ -121,13 +140,35 @@ export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
   const hasAgentOverride = agentBaseline
     ? options.model !== agentBaseline.model ||
       options.providerId !== agentBaseline.providerId ||
-      !sameValues(options.allowToolNames, agentBaseline.allowToolNames) ||
-      !sameValues(options.denyToolNames, agentBaseline.denyToolNames) ||
-      !sameValues(options.onDemandSkillIds, agentBaseline.onDemandSkillIds)
+      options.overrideToolSelection ||
+      options.overrideOnDemandSkills
     : false;
   const modelOverrideDisabled = Boolean(agentBaseline && !agentBaseline.allowModelOverride);
   const toolOverrideDisabled = Boolean(agentBaseline && !agentBaseline.enableUseTool);
   const skillOverrideDisabled = Boolean(agentBaseline && !agentBaseline.enableUseSkill);
+  const enabledToolNames = toolOverrideNames(options.toolSelectionOverrides, true);
+  const disabledToolNames = toolOverrideNames(options.toolSelectionOverrides, false);
+  const toolOptions: CapabilityOption[] = tools
+    .filter((tool) => toolPickerValue !== true || tool.selection_mode === "user_selectable")
+    .map((tool) => ({
+      id: tool.name,
+      name: tool.display_name || tool.name,
+      description: tool.description,
+      unavailable: !tool.enabled || (tool.requires_config && !tool.configured),
+    }));
+
+  const updateToolOverrides = (enabled: boolean, values: string[]) => {
+    const next = Object.fromEntries(
+      Object.entries(options.toolSelectionOverrides).filter(([, value]) => value !== enabled),
+    );
+    for (const name of new Set(values.map((value) => value.trim()).filter(Boolean))) {
+      next[name] = enabled;
+    }
+    setOptions({
+      overrideToolSelection: true,
+      toolSelectionOverrides: next,
+    });
+  };
 
   const addState = (preset?: FrontendState) => {
     setOptions({
@@ -230,8 +271,20 @@ export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
 
       <Field
         label="按需 Skill（user_defined_on_demand_skill_ids）"
-        hint={skillOverrideDisabled ? "当前 Agent 已关闭 Skill" : undefined}
+        hint={
+          skillOverrideDisabled
+            ? "当前 Agent 已关闭 Skill"
+            : "关闭临时覆盖时继承 Agent；开启后允许用空列表清空候选 Skill"
+        }
       >
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <span className="text-xs text-fg-muted">临时覆盖 Agent Skill</span>
+          <Switch
+            checked={options.overrideOnDemandSkills}
+            disabled={skillOverrideDisabled}
+            onChange={(value) => setOptions({ overrideOnDemandSkills: value })}
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {options.onDemandSkillIds.map((id) => (
             <Badge key={id} tone="accent" className="font-mono">
@@ -239,9 +292,12 @@ export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
               <button
                 className="cursor-pointer hover:text-danger"
                 title="移除"
-                disabled={skillOverrideDisabled}
+                disabled={skillOverrideDisabled || !options.overrideOnDemandSkills}
                 onClick={() =>
-                  setOptions({ onDemandSkillIds: options.onDemandSkillIds.filter((x) => x !== id) })
+                  setOptions({
+                    overrideOnDemandSkills: true,
+                    onDemandSkillIds: options.onDemandSkillIds.filter((x) => x !== id),
+                  })
                 }
               >
                 <X size={11} />
@@ -251,7 +307,7 @@ export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
           <Button
             size="xs"
             variant="outline"
-            disabled={skillOverrideDisabled}
+            disabled={skillOverrideDisabled || !options.overrideOnDemandSkills}
             onClick={() => setSkillPickerOpen(true)}
           >
             从资源选择
@@ -259,26 +315,77 @@ export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
         </div>
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field
-          label="工具白名单（allow_tool_names）"
-          hint={toolOverrideDisabled ? "当前 Agent 已关闭工具" : undefined}
-        >
-          <TagInput
-            value={options.allowToolNames}
+      <div className="space-y-3 rounded-lg border border-line p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[13px] font-medium text-fg">临时覆盖工具策略</div>
+            <div className="mt-0.5 text-xs text-fg-muted">
+              关闭时继承 Agent；开启后可清空或替换 Agent 的工具覆盖 Map
+            </div>
+          </div>
+          <Switch
+            checked={options.overrideToolSelection}
             disabled={toolOverrideDisabled}
-            onChange={(v) => setOptions({ allowToolNames: v })}
-            placeholder="回车添加工具名"
+            onChange={(value) => setOptions({ overrideToolSelection: value })}
           />
-        </Field>
-        <Field label="工具黑名单（deny_tool_names）">
-          <TagInput
-            value={options.denyToolNames}
-            disabled={toolOverrideDisabled}
-            onChange={(v) => setOptions({ denyToolNames: v })}
-            placeholder="回车添加工具名"
+        </div>
+        {toolOverrideDisabled && (
+          <div className="text-xs text-fg-faint">当前 Agent 已关闭工具，单轮请求不能重新启用。</div>
+        )}
+        <div className="flex min-h-9 items-center justify-between gap-4">
+          <span className="text-[13px] text-fg-muted">默认启用用户可选工具</span>
+          <Switch
+            checked={options.toolSelectionDefaultEnabled}
+            disabled={toolOverrideDisabled || !options.overrideToolSelection}
+            onChange={(value) =>
+              setOptions({
+                overrideToolSelection: true,
+                toolSelectionDefaultEnabled: value,
+              })
+            }
           />
-        </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field
+            label="显式启用工具"
+            hint="仅对 user_selectable 工具有启用效果"
+          >
+            <div className="mb-1.5 flex justify-end">
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={toolOverrideDisabled || !options.overrideToolSelection}
+                onClick={() => setToolPickerValue(true)}
+              >
+                从列表选择
+              </Button>
+            </div>
+            <TagInput
+              value={enabledToolNames}
+              disabled={toolOverrideDisabled || !options.overrideToolSelection}
+              onChange={(values) => updateToolOverrides(true, values)}
+              placeholder="回车添加工具名"
+            />
+          </Field>
+          <Field label="显式禁用工具" hint="可禁用 user_selectable 或 contextual 工具">
+            <div className="mb-1.5 flex justify-end">
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={toolOverrideDisabled || !options.overrideToolSelection}
+                onClick={() => setToolPickerValue(false)}
+              >
+                从列表选择
+              </Button>
+            </div>
+            <TagInput
+              value={disabledToolNames}
+              disabled={toolOverrideDisabled || !options.overrideToolSelection}
+              onChange={(values) => updateToolOverrides(false, values)}
+              placeholder="回车添加工具名"
+            />
+          </Field>
+        </div>
       </div>
 
       <Field
@@ -347,14 +454,35 @@ export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
         open={skillPickerOpen}
         onClose={() => setSkillPickerOpen(false)}
         selected={options.onDemandSkillIds}
-        onConfirm={(ids) => setOptions({ onDemandSkillIds: ids })}
+        onConfirm={(ids) =>
+          setOptions({ overrideOnDemandSkills: true, onDemandSkillIds: ids })
+        }
+      />
+      <CapabilityPickerModal
+        open={toolPickerValue !== null}
+        title={toolPickerValue ? "选择要启用的工具" : "选择要禁用的工具"}
+        items={toolOptions}
+        selected={
+          toolPickerValue === true
+            ? enabledToolNames
+            : toolPickerValue === false
+              ? disabledToolNames
+              : []
+        }
+        onClose={() => setToolPickerValue(null)}
+        onConfirm={(values) => {
+          if (toolPickerValue !== null) updateToolOverrides(toolPickerValue, values);
+        }}
       />
     </div>
   );
 }
 
-function sameValues(left: string[], right: string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
+function toolOverrideNames(overrides: Record<string, boolean>, enabled: boolean): string[] {
+  return Object.entries(overrides)
+    .filter(([, value]) => value === enabled)
+    .map(([name]) => name)
+    .sort();
 }
 
 /** Skill 资源选择器：列出资源服务中的 SKILL 资源供勾选。 */

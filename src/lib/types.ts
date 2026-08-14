@@ -78,10 +78,9 @@ export interface ChatRequest {
   runtime_options?: Record<string, unknown>;
   frontend_states?: FrontendState[] | null;
   user_defined_attachment_ids?: string[] | null;
-  user_defined_allow_tool_names?: string[] | null;
-  user_defined_deny_tool_names?: string[] | null;
+  tool_selection_default_enabled?: boolean | null;
+  tool_selection_overrides?: Record<string, boolean> | null;
   user_defined_on_demand_skill_ids?: string[] | null;
-  user_defined_force_enabled_skill_ids?: string[] | null;
   client_tool_capabilities?: ClientToolCapability[];
 }
 
@@ -195,12 +194,17 @@ export interface ProviderInfo {
 }
 
 // ============ Chat：Tool / MCP ============
+export type ToolSelectionMode = "user_selectable" | "contextual";
+
 export interface ToolInfo {
   name: string;
+  display_name: string;
   description: string;
+  selection_mode: ToolSelectionMode;
   requires_config: boolean;
   configured: boolean;
   enabled: boolean;
+  source?: Record<string, unknown> | null;
   missing_config_keys: string[];
   config_schema: Record<string, unknown>;
   secret_fingerprints: Record<string, string>;
@@ -280,11 +284,11 @@ export interface AgentSpec {
   };
   toolAndSkillPolicy: {
     enableUseTool: boolean;
-    allowToolNames: string[];
-    denyToolNames: string[];
+    toolSelectionDefaultEnabled: boolean;
+    toolSelectionOverrides: Record<string, boolean>;
     enableUseSkill: boolean;
     onDemandSkillIds: string[];
-    forceEnabledSkillIds: string[];
+    skillMatchTopK: number;
   };
   memoryPolicy: {
     enableChatMemory: boolean;

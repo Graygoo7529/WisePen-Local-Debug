@@ -48,12 +48,7 @@ export function guessAssetType(fileName: string): AssetResourceType {
 }
 
 /** 新建 SKILL.md 时的中文技能模板。 */
-export const SKILL_MD_TEMPLATE = `---
-name: 技能名称
-description: 简要描述该技能在何时被调用，帮助模型判断使用时机
----
-
-# 技能名称
+export const SKILL_MD_TEMPLATE = `# 技能执行说明
 
 ## 何时使用
 - 当用户提出……类请求时使用本技能。

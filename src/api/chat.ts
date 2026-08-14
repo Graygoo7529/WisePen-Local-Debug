@@ -131,6 +131,8 @@ export const chatApi = {
 
   // ---- Tool / MCP ----
   listUserTools: () => get<{ tools: ToolInfo[] }>("chat", "/chat/tool/listUserTools"),
+  listAvailableTools: () =>
+    get<{ tools: ToolInfo[] }>("chat", "/chat/tool/listAvailableTools"),
   getUserToolConfig: (toolName: string) =>
     get<ToolInfo>("chat", "/chat/tool/getUserToolConfig", { tool_name: toolName }),
   updateUserToolConfig: (body: {

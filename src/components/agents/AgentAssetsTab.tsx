@@ -139,7 +139,7 @@ export function AgentAssetsTab({
       setDraft({
         mode: "create",
         name: base,
-        path: `/${base}`,
+        path: "/",
         assetResourceType: guessType(base),
         content,
       });
@@ -186,7 +186,11 @@ export function AgentAssetsTab({
     <>
       <SectionCard
         title={`资产 · v${bundle.version}（${assets.length}）`}
-        description={editable ? "草稿资产" : "已发布版本快照（只读）"}
+        description={
+          editable
+            ? "Java 草稿资产（预留，当前不参与 Python 对话）"
+            : "已发布版本快照（预留，当前不参与 Python 对话）"
+        }
         actions={
           <>
             {editable && (

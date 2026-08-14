@@ -99,8 +99,10 @@ export interface RequestOptions {
   model: string;
   providerId: string;
   runtimeOptionsText: string;
-  allowToolNames: string[];
-  denyToolNames: string[];
+  overrideToolSelection: boolean;
+  toolSelectionDefaultEnabled: boolean;
+  toolSelectionOverrides: Record<string, boolean>;
+  overrideOnDemandSkills: boolean;
   onDemandSkillIds: string[];
   frontendStates: FrontendState[];
 }
@@ -113,11 +115,10 @@ export interface AgentRequestBaseline {
   providerId: string;
   allowModelOverride: boolean;
   enableUseTool: boolean;
-  allowToolNames: string[];
-  denyToolNames: string[];
+  toolSelectionDefaultEnabled: boolean;
+  toolSelectionOverrides: Record<string, boolean>;
   enableUseSkill: boolean;
   onDemandSkillIds: string[];
-  forceEnabledSkillIds: string[];
 }
 
 export const defaultRequestOptions = (): RequestOptions => ({
@@ -125,8 +126,10 @@ export const defaultRequestOptions = (): RequestOptions => ({
   model: useSettingsStore.getState().defaultModel,
   providerId: "",
   runtimeOptionsText: "",
-  allowToolNames: [],
-  denyToolNames: [],
+  overrideToolSelection: false,
+  toolSelectionDefaultEnabled: true,
+  toolSelectionOverrides: {},
+  overrideOnDemandSkills: false,
   onDemandSkillIds: [],
   frontendStates: [],
 });
@@ -530,11 +533,14 @@ export const useChatStore = create<ChatState>((set, getState) => {
         providerId: spec.modelPolicy.defaultProviderId,
         allowModelOverride: spec.modelPolicy.allowRequestOverride,
         enableUseTool: policy.enableUseTool,
-        allowToolNames: policy.enableUseTool ? policy.allowToolNames : [],
-        denyToolNames: policy.enableUseTool ? policy.denyToolNames : [],
-        enableUseSkill: policy.enableUseSkill,
-        onDemandSkillIds: policy.enableUseSkill ? policy.onDemandSkillIds : [],
-        forceEnabledSkillIds: policy.enableUseSkill ? policy.forceEnabledSkillIds : [],
+        toolSelectionDefaultEnabled:
+          policy.enableUseTool && policy.toolSelectionDefaultEnabled,
+        toolSelectionOverrides: policy.enableUseTool
+          ? { ...policy.toolSelectionOverrides }
+          : {},
+        enableUseSkill: policy.enableUseTool && policy.enableUseSkill,
+        onDemandSkillIds:
+          policy.enableUseTool && policy.enableUseSkill ? policy.onDemandSkillIds : [],
       };
       set((state) => ({
         agentRequestBaseline: baseline,
@@ -828,16 +834,15 @@ export const useChatStore = create<ChatState>((set, getState) => {
         userDefinedAttachments.length > 0
           ? userDefinedAttachments.map((attachment) => attachment.attachment_id)
           : null,
-      user_defined_allow_tool_names:
-        opts.allowToolNames.length > 0
-          ? [...new Set([
-              ...opts.allowToolNames,
-              ...CLIENT_TOOL_CAPABILITIES.map((tool) => tool.name),
-            ])]
-          : null,
-      user_defined_deny_tool_names: opts.denyToolNames.length > 0 ? opts.denyToolNames : null,
-      user_defined_on_demand_skill_ids:
-        opts.onDemandSkillIds.length > 0 ? opts.onDemandSkillIds : null,
+      tool_selection_default_enabled: opts.overrideToolSelection
+        ? opts.toolSelectionDefaultEnabled
+        : null,
+      tool_selection_overrides: opts.overrideToolSelection
+        ? opts.toolSelectionOverrides
+        : null,
+      user_defined_on_demand_skill_ids: opts.overrideOnDemandSkills
+        ? opts.onDemandSkillIds
+        : null,
       client_tool_capabilities: CLIENT_TOOL_CAPABILITIES,
     };
 
@@ -1083,8 +1088,10 @@ function applyBaselineToOptions(
     ...options,
     model: baseline.model,
     providerId: baseline.providerId,
-    allowToolNames: [...baseline.allowToolNames],
-    denyToolNames: [...baseline.denyToolNames],
+    overrideToolSelection: false,
+    toolSelectionDefaultEnabled: baseline.toolSelectionDefaultEnabled,
+    toolSelectionOverrides: { ...baseline.toolSelectionOverrides },
+    overrideOnDemandSkills: false,
     onDemandSkillIds: [...baseline.onDemandSkillIds],
   };
 }

@@ -28,10 +28,7 @@ import {
 } from "../ui";
 
 type EditorMode = "form" | "json";
-type PolicyField = keyof Pick<
-  AgentSpec["toolAndSkillPolicy"],
-  "allowToolNames" | "denyToolNames" | "onDemandSkillIds" | "forceEnabledSkillIds"
->;
+type PolicyPickerField = "enabledTools" | "disabledTools" | "onDemandSkillIds";
 
 export function AgentSpecTab({
   resourceId,
@@ -57,7 +54,7 @@ export function AgentSpecTab({
   const [models, setModels] = useState<AvailableModels | null>(null);
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [skills, setSkills] = useState<ResourceItem[]>([]);
-  const [pickerField, setPickerField] = useState<PolicyField | null>(null);
+  const [pickerField, setPickerField] = useState<PolicyPickerField | null>(null);
 
   useEffect(() => {
     const next = normalizeAgentSpec(bundle?.spec);
@@ -70,7 +67,7 @@ export function AgentSpecTab({
 
   useEffect(() => {
     chatApi.listAvailableModels().then(setModels).catch(() => setModels(null));
-    chatApi.listUserTools().then((response) => setTools(response.tools)).catch(() => setTools([]));
+    chatApi.listAvailableTools().then((response) => setTools(response.tools)).catch(() => setTools([]));
     resourceApi
       .listResources({ resourceType: "SKILL", size: 100 })
       .then((response) => setSkills(response.list))
@@ -94,30 +91,30 @@ export function AgentSpecTab({
     setJsonError(null);
   };
 
-  const updatePolicyList = (field: PolicyField, values: string[]) => {
+  const updateSkillIds = (values: string[]) => {
     const items = Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
-    const nextPolicy = { ...spec.toolAndSkillPolicy, [field]: items };
-    if (field === "allowToolNames") {
-      nextPolicy.denyToolNames = nextPolicy.denyToolNames.filter((item) => !items.includes(item));
-    } else if (field === "denyToolNames") {
-      nextPolicy.allowToolNames = nextPolicy.allowToolNames.filter((item) => !items.includes(item));
-    } else if (field === "onDemandSkillIds") {
-      nextPolicy.forceEnabledSkillIds = nextPolicy.forceEnabledSkillIds.filter(
-        (item) => !items.includes(item),
-      );
-    } else {
-      nextPolicy.onDemandSkillIds = nextPolicy.onDemandSkillIds.filter(
-        (item) => !items.includes(item),
-      );
-    }
     updateSpec({
       ...spec,
-      toolAndSkillPolicy: nextPolicy,
+      toolAndSkillPolicy: { ...spec.toolAndSkillPolicy, onDemandSkillIds: items },
     });
   };
 
-  const updateList = (field: PolicyField, value: string) => {
-    updatePolicyList(field, value.split(/[\n,]/));
+  const updateToolOverrides = (enabled: boolean, values: string[]) => {
+    const next = Object.fromEntries(
+      Object.entries(spec.toolAndSkillPolicy.toolSelectionOverrides).filter(
+        ([, value]) => value !== enabled,
+      ),
+    );
+    for (const name of new Set(values.map((value) => value.trim()).filter(Boolean))) {
+      next[name] = enabled;
+    }
+    updateSpec({
+      ...spec,
+      toolAndSkillPolicy: {
+        ...spec.toolAndSkillPolicy,
+        toolSelectionOverrides: next,
+      },
+    });
   };
 
   const onTextChange = (value: string) => {
@@ -146,15 +143,17 @@ export function AgentSpecTab({
       return;
     }
     if (
-      payload.memoryPolicy.highWatermarkRatio < 0 ||
+      payload.memoryPolicy.highWatermarkRatio <= 0 ||
       payload.memoryPolicy.highWatermarkRatio > 1 ||
-      payload.memoryPolicy.lowWatermarkRatio < 0 ||
+      payload.memoryPolicy.lowWatermarkRatio <= 0 ||
       payload.memoryPolicy.lowWatermarkRatio > 1 ||
       payload.memoryPolicy.longTermMemoryScoreThreshold < 0 ||
       payload.memoryPolicy.longTermMemoryScoreThreshold > 1 ||
-      payload.memoryPolicy.longTermMemoryLimit < 1
+      payload.memoryPolicy.longTermMemoryLimit < 0 ||
+      payload.toolAndSkillPolicy.skillMatchTopK < 0 ||
+      payload.toolAndSkillPolicy.skillMatchTopK >= 30
     ) {
-      toast.error("记忆策略参数超出有效范围");
+      toast.error("Agent 策略参数超出有效范围");
       return;
     }
     setSaving(true);
@@ -199,18 +198,22 @@ export function AgentSpecTab({
       label: `${spec.modelPolicy.defaultModelId} · ${spec.modelPolicy.defaultProviderId || "默认 Provider"}`,
     });
   }
-  const toolOptions: CapabilityOption[] = tools.map((tool) => ({
-    id: tool.name,
-    name: tool.name,
-    description: tool.description,
-    unavailable: !tool.enabled || (tool.requires_config && !tool.configured),
-  }));
+  const toolOptions: CapabilityOption[] = tools
+    .filter((tool) => pickerField !== "enabledTools" || tool.selection_mode === "user_selectable")
+    .map((tool) => ({
+      id: tool.name,
+      name: tool.display_name || tool.name,
+      description: `${tool.selection_mode} · ${tool.description}`,
+      unavailable: !tool.enabled || (tool.requires_config && !tool.configured),
+    }));
   const skillOptions: CapabilityOption[] = skills.map((skill) => ({
     id: skill.resourceId,
     name: skill.resourceName,
     description: typeof skill.preview === "string" ? skill.preview : undefined,
   }));
-  const pickerIsTool = pickerField === "allowToolNames" || pickerField === "denyToolNames";
+  const pickerIsTool = pickerField === "enabledTools" || pickerField === "disabledTools";
+  const enabledToolNames = toolOverrideNames(policy.toolSelectionOverrides, true);
+  const disabledToolNames = toolOverrideNames(policy.toolSelectionOverrides, false);
 
   return (
     <SectionCard
@@ -346,14 +349,18 @@ export function AgentSpecTab({
                 onChange={(value) =>
                   updateSpec({
                     ...spec,
-                    toolAndSkillPolicy: { ...policy, enableUseTool: value },
+                    toolAndSkillPolicy: {
+                      ...policy,
+                      enableUseTool: value,
+                      enableUseSkill: value ? policy.enableUseSkill : false,
+                    },
                   })
                 }
               />
               <SettingSwitch
                 label="启用 Skill"
                 checked={policy.enableUseSkill}
-                disabled={disabled}
+                disabled={disabled || !policy.enableUseTool}
                 onChange={(value) =>
                   updateSpec({
                     ...spec,
@@ -362,34 +369,60 @@ export function AgentSpecTab({
                 }
               />
             </div>
+            <SettingSwitch
+              label="默认启用用户可选工具"
+              checked={policy.toolSelectionDefaultEnabled}
+              disabled={disabled || !policy.enableUseTool}
+              onChange={(value) =>
+                updateSpec({
+                  ...spec,
+                  toolAndSkillPolicy: {
+                    ...policy,
+                    toolSelectionDefaultEnabled: value,
+                  },
+                })
+              }
+            />
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <ListField
-                label="允许的工具名"
-                values={policy.allowToolNames}
+                label="显式启用工具"
+                hint="仅对 user_selectable 工具有启用效果；仍可手工输入工具名调试"
+                values={enabledToolNames}
                 disabled={disabled || !policy.enableUseTool}
-                onPick={() => setPickerField("allowToolNames")}
-                onChange={(value) => updateList("allowToolNames", value)}
+                onPick={() => setPickerField("enabledTools")}
+                onChange={(value) => updateToolOverrides(true, value.split(/[\n,]/))}
               />
               <ListField
-                label="禁用的工具名"
-                values={policy.denyToolNames}
+                label="显式禁用工具"
+                hint="可禁用 user_selectable 或 contextual 工具"
+                values={disabledToolNames}
                 disabled={disabled || !policy.enableUseTool}
-                onPick={() => setPickerField("denyToolNames")}
-                onChange={(value) => updateList("denyToolNames", value)}
+                onPick={() => setPickerField("disabledTools")}
+                onChange={(value) => updateToolOverrides(false, value.split(/[\n,]/))}
               />
               <ListField
                 label="按需 Skill ID"
                 values={policy.onDemandSkillIds}
-                disabled={disabled || !policy.enableUseSkill}
+                disabled={disabled || !policy.enableUseTool || !policy.enableUseSkill}
                 onPick={() => setPickerField("onDemandSkillIds")}
-                onChange={(value) => updateList("onDemandSkillIds", value)}
+                onChange={(value) => updateSkillIds(value.split(/[\n,]/))}
               />
-              <ListField
-                label="固定启用 Skill ID"
-                values={policy.forceEnabledSkillIds}
-                disabled={disabled || !policy.enableUseSkill}
-                onPick={() => setPickerField("forceEnabledSkillIds")}
-                onChange={(value) => updateList("forceEnabledSkillIds", value)}
+              <NumberField
+                label="Skill 匹配 Top-K"
+                value={policy.skillMatchTopK}
+                min={0}
+                max={29}
+                step={1}
+                disabled={disabled || !policy.enableUseTool || !policy.enableUseSkill}
+                onChange={(value) =>
+                  updateSpec({
+                    ...spec,
+                    toolAndSkillPolicy: {
+                      ...policy,
+                      skillMatchTopK: Math.round(value),
+                    },
+                  })
+                }
               />
             </div>
           </div>
@@ -462,7 +495,7 @@ export function AgentSpecTab({
               <NumberField
                 label="长期记忆召回数"
                 value={memory.longTermMemoryLimit}
-                min={1}
+                min={0}
                 max={50}
                 step={1}
                 disabled={disabled || !memory.enableLongTermMemory}
@@ -509,10 +542,20 @@ export function AgentSpecTab({
         open={pickerField !== null}
         title={pickerIsTool ? "选择工具" : "选择 Skill"}
         items={pickerIsTool ? toolOptions : skillOptions}
-        selected={pickerField ? policy[pickerField] : []}
+        selected={
+          pickerField === "enabledTools"
+            ? enabledToolNames
+            : pickerField === "disabledTools"
+              ? disabledToolNames
+              : pickerField === "onDemandSkillIds"
+                ? policy.onDemandSkillIds
+                : []
+        }
         onClose={() => setPickerField(null)}
         onConfirm={(values) => {
-          if (pickerField) updatePolicyList(pickerField, values);
+          if (pickerField === "enabledTools") updateToolOverrides(true, values);
+          if (pickerField === "disabledTools") updateToolOverrides(false, values);
+          if (pickerField === "onDemandSkillIds") updateSkillIds(values);
         }}
       />
     </SectionCard>
@@ -544,19 +587,24 @@ function SettingSwitch({
 
 function ListField({
   label,
+  hint,
   values,
   disabled,
   onPick,
   onChange,
 }: {
   label: string;
+  hint?: string;
   values: string[];
   disabled: boolean;
   onPick: () => void;
   onChange: (value: string) => void;
 }) {
   return (
-    <Field label={label} hint="可直接手动输入用于调试；每行一个值，也可用逗号分隔">
+    <Field
+      label={label}
+      hint={hint ?? "可直接手动输入用于调试；每行一个值，也可用逗号分隔"}
+    >
       <div className="mb-1.5 flex justify-end">
         <Button size="xs" variant="outline" disabled={disabled} onClick={onPick}>
           从列表选择
@@ -573,6 +621,13 @@ function ListField({
       />
     </Field>
   );
+}
+
+function toolOverrideNames(overrides: Record<string, boolean>, enabled: boolean): string[] {
+  return Object.entries(overrides)
+    .filter(([, value]) => value === enabled)
+    .map(([name]) => name)
+    .sort();
 }
 
 function NumberField({

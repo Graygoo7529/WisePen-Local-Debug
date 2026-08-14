@@ -44,9 +44,10 @@ export function Composer({
 
   const activeOptionCount =
     (options.model ? 1 : 0) +
-    options.onDemandSkillIds.length +
-    options.allowToolNames.length +
-    options.denyToolNames.length +
+    (options.overrideOnDemandSkills ? 1 + options.onDemandSkillIds.length : 0) +
+    (options.overrideToolSelection
+      ? 1 + Object.keys(options.toolSelectionOverrides).length
+      : 0) +
     options.frontendStates.length +
     (options.runtimeOptionsText.trim() ? 1 : 0);
 
