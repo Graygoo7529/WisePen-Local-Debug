@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus, RotateCcw, X } from "lucide-react";
-import { Badge, Button, Field, Input, Select, Switch, Textarea } from "../ui";
+import { Badge, Button, Field, IconButton, Input, Select, Switch, Textarea } from "../ui";
 import { Modal } from "../Modal";
 import { chatApi } from "../../api/chat";
 import { resourceApi } from "../../api/resource";
@@ -73,7 +73,7 @@ function TagInput({
 }
 
 /** 对话请求参数面板：模型、Skill、工具名单、frontend_states 上下文模拟、runtime_options。 */
-export function RequestOptionsPanel() {
+export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
   const options = useChatStore((s) => s.options);
   const currentSession = useChatStore((s) => s.currentSession);
   const setOptions = useChatStore((s) => s.setOptions);
@@ -141,7 +141,13 @@ export function RequestOptionsPanel() {
   };
 
   return (
-    <div className="space-y-3 border-t border-line bg-bg-elev px-4 py-3">
+    <div className="max-h-[min(56vh,560px)] shrink-0 space-y-3 overflow-y-auto border-t border-line bg-bg-elev px-4 pb-3">
+      <div className="sticky top-0 z-10 -mx-4 flex h-10 items-center justify-between border-b border-line bg-bg-elev px-4">
+        <span className="text-[13px] font-semibold text-fg">请求参数</span>
+        <IconButton title="收起请求参数" onClick={onClose}>
+          <X size={14} />
+        </IconButton>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <Field
           label={currentSession ? "会话 Agent" : "新会话 Agent"}

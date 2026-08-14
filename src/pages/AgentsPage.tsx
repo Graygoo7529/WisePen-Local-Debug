@@ -242,7 +242,7 @@ export default function AgentsPage() {
             onVersionChange={changeVersion}
             status={
               editing ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={hasPrompt ? "green" : "red"}>
                     {hasPrompt ? "System Prompt 已配置" : "缺少 System Prompt"}
                   </Badge>

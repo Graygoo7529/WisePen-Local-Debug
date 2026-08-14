@@ -211,7 +211,7 @@ export default function SkillsPage() {
             onVersionChange={changeVersion}
             status={
               editing ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={coreReady ? "green" : "red"}>
                     {coreReady ? "SKILL.md 已就绪" : "缺少 /SKILL.md"}
                   </Badge>

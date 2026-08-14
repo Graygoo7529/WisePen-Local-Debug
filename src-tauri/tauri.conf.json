@@ -14,10 +14,11 @@
       {
         "label": "main",
         "title": "WisePen Local",
-        "width": 1520,
-        "height": 960,
-        "minWidth": 1100,
-        "minHeight": 700,
+        "width": 1280,
+        "height": 800,
+        "minWidth": 980,
+        "minHeight": 640,
+        "maximized": true,
         "resizable": true
       }
     ],

@@ -556,7 +556,7 @@ function ListField({
   onChange: (value: string) => void;
 }) {
   return (
-    <Field label={label} hint="每行一个值，也可用逗号分隔">
+    <Field label={label} hint="可直接手动输入用于调试；每行一个值，也可用逗号分隔">
       <div className="mb-1.5 flex justify-end">
         <Button size="xs" variant="outline" disabled={disabled} onClick={onPick}>
           从列表选择
@@ -566,6 +566,7 @@ function ListField({
         value={values.join("\n")}
         disabled={disabled}
         rows={3}
+        placeholder="手动输入名称或 ID"
         className="font-mono text-xs"
         spellCheck={false}
         onChange={(event) => onChange(event.target.value)}

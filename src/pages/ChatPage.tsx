@@ -140,7 +140,7 @@ export default function ChatPage() {
         )}
 
         {/* 请求参数面板（可折叠） */}
-        {optionsOpen && <RequestOptionsPanel />}
+        {optionsOpen && <RequestOptionsPanel onClose={() => setOptionsOpen(false)} />}
 
         <Composer optionsOpen={optionsOpen} onToggleOptions={() => setOptionsOpen((v) => !v)} />
       </div>
