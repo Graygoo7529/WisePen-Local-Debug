@@ -31,6 +31,7 @@ export default function AgentsPage() {
   const [bundleLoading, setBundleLoading] = useState(false);
   const [selection, setSelection] = useState<ResourceVersionSelection>({ kind: "draft", version: 1 });
   const [tab, setTab] = useState("spec");
+  const [specDirty, setSpecDirty] = useState(false);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
@@ -103,6 +104,11 @@ export default function AgentsPage() {
   }, [loadList]);
 
   const selectAgent = (resourceId: string) => {
+    if (specDirty && resourceId !== selectedId) {
+      toast.info("请先保存当前 Agent 的运行配置草稿");
+      return;
+    }
+    setSpecDirty(false);
     setSelectedId(resourceId);
     setTab("spec");
     void loadResource(resourceId);
@@ -110,6 +116,11 @@ export default function AgentsPage() {
 
   const changeVersion = (next: ResourceVersionSelection) => {
     if (!selectedId) return;
+    if (specDirty) {
+      toast.info("请先保存当前 Agent 的运行配置草稿");
+      return;
+    }
+    setSpecDirty(false);
     setSelection(next);
     void loadBundle(selectedId, next);
   };
@@ -173,6 +184,10 @@ export default function AgentsPage() {
 
   const publish = async () => {
     if (!selectedId) return;
+    if (specDirty) {
+      toast.info("请先保存运行配置草稿，再发布 Agent");
+      return;
+    }
     setPublishing(true);
     try {
       await agentApi.publishAgentVersion(selectedId);
@@ -205,6 +220,7 @@ export default function AgentsPage() {
       setSelectedId(null);
       setInfo(null);
       setBundle(null);
+      setSpecDirty(false);
       await loadList();
     } catch (error) {
       toast.error(`删除失败：${errorText(error)}`);
@@ -216,7 +232,7 @@ export default function AgentsPage() {
   const editing = selection.kind === "draft";
   const pendingAssets = bundle?.assets.filter((asset) => asset.uploadStatus !== "AVAILABLE").length ?? 0;
   const hasPrompt = Boolean(bundle?.spec?.systemPrompt?.trim());
-  const publishReady = editing && Boolean(bundle) && hasPrompt && pendingAssets === 0;
+  const publishReady = editing && Boolean(bundle) && hasPrompt && pendingAssets === 0 && !specDirty;
   const draftVersion = info ? info.agentInfo.version + 1 : selection.version;
 
   return (
@@ -249,6 +265,7 @@ export default function AgentsPage() {
                   <Badge tone={pendingAssets === 0 ? "green" : "yellow"}>
                     {pendingAssets === 0 ? "资产已就绪" : `${pendingAssets} 个资产上传中`}
                   </Badge>
+                  {specDirty && <Badge tone="yellow">运行配置未保存</Badge>}
                 </div>
               ) : (
                 <Badge tone="gray">只读快照</Badge>
@@ -292,6 +309,7 @@ export default function AgentsPage() {
                   variant="primary"
                   icon={<Rocket size={14} />}
                   disabled={!publishReady}
+                  title={specDirty ? "请先保存运行配置草稿" : undefined}
                   onClick={() => setPublishOpen(true)}
                 >
                   发布草稿
@@ -331,7 +349,7 @@ export default function AgentsPage() {
                   onChange={setTab}
                   className="mb-4"
                 />
-                {tab === "spec" && (
+                <div className={tab === "spec" ? "" : "hidden"}>
                   <AgentSpecTab
                     resourceId={selectedId}
                     draftVersion={draftVersion}
@@ -339,8 +357,9 @@ export default function AgentsPage() {
                     loading={bundleLoading}
                     editable={editing}
                     onSaved={reloadBundle}
+                    onDirtyChange={setSpecDirty}
                   />
-                )}
+                </div>
                 {tab === "assets" && (
                   <AgentAssetsTab
                     resourceId={selectedId}

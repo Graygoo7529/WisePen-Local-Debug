@@ -4,6 +4,7 @@ import { Badge, Button, Field, IconButton, Input, Select, Switch, Textarea } fro
 import { Modal } from "../Modal";
 import { chatApi } from "../../api/chat";
 import { resourceApi } from "../../api/resource";
+import { CLIENT_TOOL_CAPABILITIES } from "../../lib/clientTools";
 import { toast } from "../../stores/toastStore";
 import { useChatStore } from "../../stores/chatStore";
 import type {
@@ -17,70 +18,7 @@ import {
   CapabilityPickerModal,
   type CapabilityOption,
 } from "../agents/CapabilityPickerModal";
-
-/** 字符串数组输入：回车/逗号成 chip。 */
-function TagInput({
-  value,
-  onChange,
-  placeholder,
-  disabled,
-}: {
-  value: string[];
-  onChange: (v: string[]) => void;
-  placeholder?: string;
-  disabled?: boolean;
-}) {
-  const [text, setText] = useState("");
-  const commit = () => {
-    const v = text.trim().replace(/,+$/, "");
-    if (v && !value.includes(v)) onChange([...value, v]);
-    setText("");
-  };
-  return (
-    <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-lg border border-line bg-bg-elev px-2 py-1.5 focus-within:border-accent">
-      {value.map((tag) => (
-        <span
-          key={tag}
-          className="inline-flex items-center gap-1 rounded-md bg-bg-hover px-1.5 py-0.5 font-mono text-xs text-fg"
-        >
-          {tag}
-          <button
-            className="cursor-pointer text-fg-faint hover:text-danger"
-            disabled={disabled}
-            onClick={() => onChange(value.filter((t) => t !== tag))}
-          >
-            <X size={11} />
-          </button>
-        </span>
-      ))}
-      <input
-        className="min-w-[120px] flex-1 bg-transparent py-0.5 text-[13px] outline-none placeholder:text-fg-faint"
-        value={text}
-        disabled={disabled}
-        placeholder={value.length === 0 ? placeholder : ""}
-        onChange={(e) => {
-          if (e.target.value.includes(",")) {
-            const parts = e.target.value.split(",");
-            const adds = parts.slice(0, -1).map((p) => p.trim()).filter(Boolean);
-            if (adds.length > 0) onChange([...new Set([...value, ...adds])]);
-            setText(parts[parts.length - 1]);
-          } else {
-            setText(e.target.value);
-          }
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-          } else if (e.key === "Backspace" && text === "" && value.length > 0) {
-            onChange(value.slice(0, -1));
-          }
-        }}
-        onBlur={commit}
-      />
-    </div>
-  );
-}
+import { TagInput } from "../TagInput";
 
 /** 对话请求参数面板：模型、Skill、工具策略、frontend_states 上下文模拟、runtime_options。 */
 export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
@@ -148,14 +86,28 @@ export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
   const skillOverrideDisabled = Boolean(agentBaseline && !agentBaseline.enableUseSkill);
   const enabledToolNames = toolOverrideNames(options.toolSelectionOverrides, true);
   const disabledToolNames = toolOverrideNames(options.toolSelectionOverrides, false);
-  const toolOptions: CapabilityOption[] = tools
-    .filter((tool) => toolPickerValue !== true || tool.selection_mode === "user_selectable")
-    .map((tool) => ({
+  const serverToolNames = new Set(tools.map((tool) => tool.name));
+  const toolOptions: CapabilityOption[] = [
+    ...tools.map((tool) => ({
       id: tool.name,
       name: tool.display_name || tool.name,
-      description: tool.description,
+      description: `${tool.selection_mode} · ${tool.description}`,
       unavailable: !tool.enabled || (tool.requires_config && !tool.configured),
-    }));
+      selectionDisabled:
+        toolPickerValue === true && tool.selection_mode !== "user_selectable",
+      selectionHint:
+        toolPickerValue === true && tool.selection_mode !== "user_selectable"
+          ? "由上下文控制"
+          : undefined,
+    })),
+    ...CLIENT_TOOL_CAPABILITIES
+      .filter((tool) => !serverToolNames.has(tool.name))
+      .map((tool) => ({
+        id: tool.name,
+        name: tool.name,
+        description: `Local 客户端工具 · ${tool.description}`,
+      })),
+  ];
 
   const updateToolOverrides = (enabled: boolean, values: string[]) => {
     const next = Object.fromEntries(

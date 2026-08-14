@@ -7,6 +7,8 @@ export interface CapabilityOption {
   name: string;
   description?: string;
   unavailable?: boolean;
+  selectionDisabled?: boolean;
+  selectionHint?: string;
 }
 
 export function CapabilityPickerModal({
@@ -76,12 +78,17 @@ export function CapabilityPickerModal({
           {filtered.map((item) => (
             <label
               key={item.id}
-              className="flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 hover:bg-bg-hover"
+              className={`flex items-start gap-2.5 rounded-md px-2.5 py-2 ${
+                item.selectionDisabled
+                  ? "cursor-not-allowed opacity-70"
+                  : "cursor-pointer hover:bg-bg-hover"
+              }`}
             >
               <input
                 type="checkbox"
                 className="mt-0.5 h-3.5 w-3.5 accent-accent"
                 checked={checked.includes(item.id)}
+                disabled={item.selectionDisabled}
                 onChange={(event) =>
                   setChecked((current) =>
                     event.target.checked
@@ -94,6 +101,9 @@ export function CapabilityPickerModal({
                 <div className="flex items-center gap-2">
                   <span className="truncate text-[13px] font-medium text-fg">{item.name}</span>
                   {item.unavailable && <Badge tone="yellow">当前不可用</Badge>}
+                  {item.selectionDisabled && (
+                    <Badge tone="gray">{item.selectionHint ?? "不可选择"}</Badge>
+                  )}
                 </div>
                 <div className="truncate font-mono text-[11px] text-fg-faint">{item.id}</div>
                 {item.description && (

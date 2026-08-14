@@ -4,6 +4,7 @@ import { agentApi } from "../../api/asset";
 import { chatApi } from "../../api/chat";
 import { resourceApi } from "../../api/resource";
 import { normalizeAgentSpec } from "../../lib/agentSpec";
+import { CLIENT_TOOL_CAPABILITIES } from "../../lib/clientTools";
 import { prettyJson } from "../../lib/format";
 import type {
   AgentSpec,
@@ -13,6 +14,7 @@ import type {
   ToolInfo,
 } from "../../lib/types";
 import { toast } from "../../stores/toastStore";
+import { TagInput } from "../TagInput";
 import { CapabilityPickerModal, type CapabilityOption } from "./CapabilityPickerModal";
 import {
   Button,
@@ -37,6 +39,7 @@ export function AgentSpecTab({
   loading,
   editable,
   onSaved,
+  onDirtyChange,
 }: {
   resourceId: string;
   draftVersion: number;
@@ -44,6 +47,7 @@ export function AgentSpecTab({
   loading: boolean;
   editable: boolean;
   onSaved: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const [mode, setMode] = useState<EditorMode>("form");
   const [spec, setSpec] = useState<AgentSpec>(normalizeAgentSpec(bundle?.spec));
@@ -73,6 +77,12 @@ export function AgentSpecTab({
       .then((response) => setSkills(response.list))
       .catch(() => setSkills([]));
   }, []);
+
+  const dirty = specText !== savedText;
+
+  useEffect(() => {
+    onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
 
   if (loading && !bundle) {
     return (
@@ -172,7 +182,6 @@ export function AgentSpecTab({
     }
   };
 
-  const dirty = specText !== savedText;
   const disabled = !editable;
   const policy = spec.toolAndSkillPolicy;
   const memory = spec.memoryPolicy;
@@ -198,14 +207,28 @@ export function AgentSpecTab({
       label: `${spec.modelPolicy.defaultModelId} · ${spec.modelPolicy.defaultProviderId || "默认 Provider"}`,
     });
   }
-  const toolOptions: CapabilityOption[] = tools
-    .filter((tool) => pickerField !== "enabledTools" || tool.selection_mode === "user_selectable")
-    .map((tool) => ({
+  const serverToolNames = new Set(tools.map((tool) => tool.name));
+  const toolOptions: CapabilityOption[] = [
+    ...tools.map((tool) => ({
       id: tool.name,
       name: tool.display_name || tool.name,
       description: `${tool.selection_mode} · ${tool.description}`,
       unavailable: !tool.enabled || (tool.requires_config && !tool.configured),
-    }));
+      selectionDisabled:
+        pickerField === "enabledTools" && tool.selection_mode !== "user_selectable",
+      selectionHint:
+        pickerField === "enabledTools" && tool.selection_mode !== "user_selectable"
+          ? "由上下文控制"
+          : undefined,
+    })),
+    ...CLIENT_TOOL_CAPABILITIES
+      .filter((tool) => !serverToolNames.has(tool.name))
+      .map((tool) => ({
+        id: tool.name,
+        name: tool.name,
+        description: `Local 客户端工具 · ${tool.description}`,
+      })),
+  ];
   const skillOptions: CapabilityOption[] = skills.map((skill) => ({
     id: skill.resourceId,
     name: skill.resourceName,
@@ -390,7 +413,7 @@ export function AgentSpecTab({
                 values={enabledToolNames}
                 disabled={disabled || !policy.enableUseTool}
                 onPick={() => setPickerField("enabledTools")}
-                onChange={(value) => updateToolOverrides(true, value.split(/[\n,]/))}
+                onChange={(values) => updateToolOverrides(true, values)}
               />
               <ListField
                 label="显式禁用工具"
@@ -398,14 +421,14 @@ export function AgentSpecTab({
                 values={disabledToolNames}
                 disabled={disabled || !policy.enableUseTool}
                 onPick={() => setPickerField("disabledTools")}
-                onChange={(value) => updateToolOverrides(false, value.split(/[\n,]/))}
+                onChange={(values) => updateToolOverrides(false, values)}
               />
               <ListField
                 label="按需 Skill ID"
                 values={policy.onDemandSkillIds}
                 disabled={disabled || !policy.enableUseTool || !policy.enableUseSkill}
                 onPick={() => setPickerField("onDemandSkillIds")}
-                onChange={(value) => updateSkillIds(value.split(/[\n,]/))}
+                onChange={updateSkillIds}
               />
               <NumberField
                 label="Skill 匹配 Top-K"
@@ -598,7 +621,7 @@ function ListField({
   values: string[];
   disabled: boolean;
   onPick: () => void;
-  onChange: (value: string) => void;
+  onChange: (value: string[]) => void;
 }) {
   return (
     <Field
@@ -610,14 +633,11 @@ function ListField({
           从列表选择
         </Button>
       </div>
-      <Textarea
-        value={values.join("\n")}
+      <TagInput
+        value={values}
         disabled={disabled}
-        rows={3}
-        placeholder="手动输入名称或 ID"
-        className="font-mono text-xs"
-        spellCheck={false}
-        onChange={(event) => onChange(event.target.value)}
+        placeholder="输入名称或 ID，回车添加"
+        onChange={onChange}
       />
     </Field>
   );
