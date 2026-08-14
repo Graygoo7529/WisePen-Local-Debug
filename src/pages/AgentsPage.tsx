@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, GitFork, MessageSquarePlus, Rocket } from "lucide-react";
+import { Bot, GitFork, MessageSquarePlus, Rocket, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { agentApi } from "../api/asset";
 import { resourceApi } from "../api/resource";
@@ -42,6 +42,8 @@ export default function AgentsPage() {
   const [forking, setForking] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [startingChat, setStartingChat] = useState(false);
 
   const loadList = useCallback(async () => {
@@ -193,6 +195,24 @@ export default function AgentsPage() {
     if (session) navigate("/chat");
   };
 
+  const removeAgent = async () => {
+    if (!selectedId) return;
+    setDeleting(true);
+    try {
+      await resourceApi.removeResources([selectedId]);
+      toast.success("Agent 资源已删除");
+      setDeleteOpen(false);
+      setSelectedId(null);
+      setInfo(null);
+      setBundle(null);
+      await loadList();
+    } catch (error) {
+      toast.error(`删除失败：${errorText(error)}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const editing = selection.kind === "draft";
   const pendingAssets = bundle?.assets.filter((asset) => asset.uploadStatus !== "AVAILABLE").length ?? 0;
   const hasPrompt = Boolean(bundle?.spec?.systemPrompt?.trim());
@@ -258,6 +278,14 @@ export default function AgentsPage() {
                   }}
                 >
                   Fork
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  icon={<Trash2 size={14} />}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  删除
                 </Button>
                 <Button
                   size="sm"
@@ -380,6 +408,17 @@ export default function AgentsPage() {
           </Field>
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="删除 Agent 资源"
+        message={`确定删除「${info?.resourceInfo.resourceName || info?.agentInfo.name || "当前 Agent"}」吗？资源会立即从业务列表移除。`}
+        confirmText="删除"
+        danger
+        loading={deleting}
+        onConfirm={() => void removeAgent()}
+      />
 
       <ConfirmModal
         open={publishOpen}

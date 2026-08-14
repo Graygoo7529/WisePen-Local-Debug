@@ -45,4 +45,6 @@ export const resourceApi = {
     }),
   renameResource: (resourceId: string, newName: string) =>
     post<unknown>("resource", "/resource/item/renameResource", { resourceId, newName }),
+  removeResources: (resourceIds: string[]) =>
+    post<unknown>("resource", "/resource/item/removeResources", { resourceIds }),
 };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GitFork, Rocket, Wand2 } from "lucide-react";
+import { GitFork, Rocket, Trash2, Wand2 } from "lucide-react";
 import { resourceApi } from "../api/resource";
 import { skillApi } from "../api/asset";
 import {
@@ -34,6 +34,8 @@ export default function SkillsPage() {
   const [forking, setForking] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const reloadList = useCallback(async () => {
     setListLoading(true);
@@ -155,6 +157,25 @@ export default function SkillsPage() {
     }
   };
 
+  const removeSkill = async () => {
+    if (!selectedId) return;
+    setDeleting(true);
+    try {
+      await resourceApi.removeResources([selectedId]);
+      toast.success("Skill 资源已删除");
+      setDeleteOpen(false);
+      setSelectedId(null);
+      setInfo(null);
+      setBundle(null);
+      setEntries([]);
+      await reloadList();
+    } catch (error) {
+      toast.error(`删除失败：${errText(error)}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const editing = selection.kind === "draft";
   const coreReady = Boolean(
     bundle?.assets.some(
@@ -216,6 +237,14 @@ export default function SkillsPage() {
                   }}
                 >
                   Fork
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  icon={<Trash2 size={14} />}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  删除
                 </Button>
                 <Button
                   size="sm"
@@ -307,6 +336,17 @@ export default function SkillsPage() {
           </Field>
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="删除 Skill 资源"
+        message={`确定删除「${info?.resourceInfo.resourceName || info?.skillInfo.name || "当前 Skill"}」吗？资源会立即从业务列表移除。`}
+        confirmText="删除"
+        danger
+        loading={deleting}
+        onConfirm={() => void removeSkill()}
+      />
 
       <ConfirmModal
         open={publishOpen}
