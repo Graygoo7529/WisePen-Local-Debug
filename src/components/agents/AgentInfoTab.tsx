@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { agentApi } from "../../api/asset";
+import { resourceApi } from "../../api/resource";
 import type { AgentResourceInfoResponse } from "../../lib/types";
 import { toast } from "../../stores/toastStore";
 import { Badge, Button, CopyButton, Field, Input, SectionCard, Textarea } from "../ui";
@@ -13,29 +14,38 @@ export function AgentInfoTab({
   onSaved: () => void;
 }) {
   const [name, setName] = useState(info.agentInfo.name);
+  const [resourceName, setResourceName] = useState(info.resourceInfo.resourceName);
   const [description, setDescription] = useState(info.agentInfo.description);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setName(info.agentInfo.name);
+    setResourceName(info.resourceInfo.resourceName);
     setDescription(info.agentInfo.description);
   }, [info]);
 
   const dirty =
-    name !== info.agentInfo.name || description !== info.agentInfo.description;
+    name !== info.agentInfo.name ||
+    resourceName !== info.resourceInfo.resourceName ||
+    description !== info.agentInfo.description;
 
   const save = async () => {
-    if (!name.trim()) {
-      toast.error("名称不能为空");
+    if (!resourceName.trim()) {
+      toast.error("资源标题不能为空");
       return;
     }
     setSaving(true);
     try {
-      await agentApi.changeAgentInfo({
-        resourceId: info.resourceInfo.resourceId,
-        name: name.trim(),
-        description,
-      });
+      if (resourceName !== info.resourceInfo.resourceName) {
+        await resourceApi.renameResource(info.resourceInfo.resourceId, resourceName.trim());
+      }
+      if (name !== info.agentInfo.name || description !== info.agentInfo.description) {
+        await agentApi.changeAgentInfo({
+          resourceId: info.resourceInfo.resourceId,
+          name: name.trim(),
+          description,
+        });
+      }
       toast.success("基本信息已保存");
       onSaved();
     } catch (e) {
@@ -49,7 +59,6 @@ export function AgentInfoTab({
     <div className="space-y-4">
       <SectionCard
         title="基本信息"
-        description="来自 /agent/getAgentInfo；修改名称与描述后点击保存"
         actions={
           <Button
             size="sm"
@@ -63,10 +72,13 @@ export function AgentInfoTab({
         }
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="名称">
+          <Field label="资源标题">
+            <Input value={resourceName} onChange={(e) => setResourceName(e.target.value)} />
+          </Field>
+          <Field label="Agent 内部名称">
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
-          <Field label="资源 ID">
+          <Field label="资源 ID" className="md:col-span-2">
             <div className="flex items-center gap-1">
               <Input
                 value={info.resourceInfo.resourceId}

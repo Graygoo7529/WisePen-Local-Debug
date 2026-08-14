@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { FilePlus2, FolderOpen, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { agentApi } from "../../api/asset";
+import { validateAssetLocation } from "../../lib/assetPath";
 import { formatBytes } from "../../lib/format";
 import type { AgentVersionBundle, AssetInfo, AssetResourceType } from "../../lib/types";
 import { toast } from "../../stores/toastStore";
@@ -46,12 +47,14 @@ export function AgentAssetsTab({
   draftVersion,
   bundle,
   loading,
+  editable,
   onReload,
 }: {
   resourceId: string;
   draftVersion: number;
   bundle: AgentVersionBundle | null;
   loading: boolean;
+  editable: boolean;
   onReload: () => void;
 }) {
   const [draft, setDraft] = useState<AssetDraft | null>(null);
@@ -61,8 +64,9 @@ export function AgentAssetsTab({
 
   const upload = async () => {
     if (!draft) return;
-    if (!draft.name.trim() || !draft.path.trim()) {
-      toast.error("请填写资产名称与路径");
+    const locationError = validateAssetLocation(draft.path.trim(), draft.name.trim());
+    if (locationError) {
+      toast.error(locationError);
       return;
     }
     setUploading(true);
@@ -145,7 +149,7 @@ export function AgentAssetsTab({
     return (
       <EmptyState
         title="未加载到版本包"
-        description={`草稿 v${draftVersion} 可能尚未创建；上传第一个资产后会生成草稿。`}
+        description="无法读取当前选择的版本。"
         action={<Button onClick={onReload}>重试</Button>}
       />
     );
@@ -156,28 +160,32 @@ export function AgentAssetsTab({
   return (
     <>
       <SectionCard
-        title={`资产（${assets.length}）`}
-        description={`草稿 v${draftVersion} 的工作区文件；经 initUploadAgentAssets 获取票据后直传 OSS`}
+        title={`资产 · v${bundle.version}（${assets.length}）`}
+        description={editable ? "草稿资产" : "已发布版本快照（只读）"}
         actions={
           <>
-            <Button
-              size="sm"
-              variant="outline"
-              icon={<FolderOpen size={14} />}
-              onClick={() => void importFile()}
-            >
-              导入文件
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              icon={<FilePlus2 size={14} />}
-              onClick={() =>
-                setDraft({ mode: "create", name: "", path: "/", assetResourceType: "MD", content: "" })
-              }
-            >
-              新建资产
-            </Button>
+            {editable && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  icon={<FolderOpen size={14} />}
+                  onClick={() => void importFile()}
+                >
+                  导入文件
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={<FilePlus2 size={14} />}
+                  onClick={() =>
+                    setDraft({ mode: "create", name: "", path: "/", assetResourceType: "MD", content: "" })
+                  }
+                >
+                  新建资产
+                </Button>
+              </>
+            )}
             <IconButton title="刷新" onClick={onReload}>
               <RefreshCw size={14} />
             </IconButton>
@@ -187,7 +195,7 @@ export function AgentAssetsTab({
         {assets.length === 0 ? (
           <EmptyState
             title="暂无资产"
-            description="点击右上「新建资产」或「导入文件」上传第一个工作区文件"
+            description={editable ? "可新建或导入草稿资产" : "该版本没有附加资产"}
           />
         ) : (
           <div className="divide-y divide-line rounded-lg border border-line">
@@ -205,23 +213,27 @@ export function AgentAssetsTab({
                     {a.path} · {formatBytes(a.size)}
                   </div>
                 </div>
-                <IconButton
-                  title="编辑（重新上传内容）"
-                  onClick={() =>
-                    setDraft({
-                      mode: "edit",
-                      name: a.name,
-                      path: a.path,
-                      assetResourceType: a.assetResourceType,
-                      content: "",
-                    })
-                  }
-                >
-                  <Pencil size={13} />
-                </IconButton>
-                <IconButton title="删除" className="hover:text-danger" onClick={() => setDeleting(a)}>
-                  <Trash2 size={13} />
-                </IconButton>
+                {editable && (
+                  <>
+                    <IconButton
+                      title="编辑（重新上传内容）"
+                      onClick={() =>
+                        setDraft({
+                          mode: "edit",
+                          name: a.name,
+                          path: a.path,
+                          assetResourceType: a.assetResourceType,
+                          content: "",
+                        })
+                      }
+                    >
+                      <Pencil size={13} />
+                    </IconButton>
+                    <IconButton title="删除" className="hover:text-danger" onClick={() => setDeleting(a)}>
+                      <Trash2 size={13} />
+                    </IconButton>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -262,7 +274,7 @@ export function AgentAssetsTab({
                 />
               </Field>
             </div>
-            <Field label="路径" hint="资产在工作区内的相对路径，如 /prompts/extra.md">
+            <Field label="目录路径" hint="例如 / 或 /prompts；文件名在上方单独填写">
               <Input
                 value={draft.path}
                 disabled={draft.mode === "edit"}

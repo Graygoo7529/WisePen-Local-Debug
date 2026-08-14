@@ -4,6 +4,7 @@ import { cn } from "../../lib/cn";
 import { Button, EmptyState, Field, Input, Spinner, Textarea } from "../ui";
 import { Modal } from "../Modal";
 import { skillApi } from "../../api/asset";
+import { resourceApi } from "../../api/resource";
 import { toast } from "../../stores/toastStore";
 import { errText } from "./workspace";
 import type { ResourceItem } from "../../lib/types";
@@ -46,13 +47,18 @@ export function SkillListPanel({
     const title = form.title.trim();
     const name = form.name.trim();
     const description = form.description.trim();
-    if (!title || !name || !description) {
-      toast.error("标题、名称与描述均为必填项");
+    if (!title) {
+      toast.error("资源标题不能为空");
       return;
     }
     setCreating(true);
     try {
-      const resourceId = await skillApi.createSkill({ title, name, description });
+      await resourceApi.getTagTree();
+      const resourceId = await skillApi.createSkill({
+        title,
+        name: name || title,
+        description,
+      });
       toast.success("Skill 创建成功");
       setCreateOpen(false);
       await onReload();
@@ -163,7 +169,7 @@ export function SkillListPanel({
         }
       >
         <div className="space-y-3">
-          <Field label="标题" hint="资源在列表中展示的标题">
+          <Field label="资源标题">
             <Input
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
@@ -171,7 +177,7 @@ export function SkillListPanel({
               autoFocus
             />
           </Field>
-          <Field label="名称" hint="Skill 的技术名称（name）">
+          <Field label="Skill 内部名称（可选）" hint="留空时与资源标题一致">
             <Input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -179,7 +185,7 @@ export function SkillListPanel({
               spellCheck={false}
             />
           </Field>
-          <Field label="描述">
+          <Field label="描述（可选）">
             <Textarea
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}

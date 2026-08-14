@@ -175,6 +175,13 @@ export default function SettingsPage() {
                   spellCheck={false}
                 />
               </Field>
+              <Field label="X-User-Status" hint="正常测试用户填写 1">
+                <Input
+                  value={settings.userStatus}
+                  onChange={(e) => settings.set({ userStatus: e.target.value })}
+                  spellCheck={false}
+                />
+              </Field>
               <Field label="X-Group-Role-Map（JSON）">
                 <Input
                   value={settings.groupRoleMap}

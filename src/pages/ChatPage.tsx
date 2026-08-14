@@ -11,7 +11,7 @@ import {
   partsFromUIMessage,
   userPartsFromLiveTurn,
 } from "../components/chat/chatDisplay";
-import { Button, EmptyState, IconButton, Spinner } from "../components/ui";
+import { Badge, Button, EmptyState, IconButton, Spinner } from "../components/ui";
 import { formatRelativeTime } from "../lib/format";
 import { Link } from "react-router-dom";
 
@@ -63,9 +63,14 @@ export default function ChatPage() {
         {/* 会话头部 */}
         <div className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-bg-elev px-4">
           <div className="min-w-0 flex-1">
-            <span className="truncate text-sm font-semibold">
-              {session ? session.title || "未命名会话" : "对话"}
-            </span>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm font-semibold">
+                {session ? session.title || "未命名会话" : "对话"}
+              </span>
+              {session?.agent_id && (
+                <Badge tone="accent">Agent v{session.agent_version ?? "-"}</Badge>
+              )}
+            </div>
             {session && (
               <span className="ml-2 text-xs text-fg-faint">
                 更新于 {formatRelativeTime(session.updated_at)} · {session.id}

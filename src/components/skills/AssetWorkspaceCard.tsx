@@ -1,19 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import {
-  FilePlus2,
-  FolderOpen,
-  GitFork,
-  Layers,
-  Rocket,
-  Trash2,
-  Upload,
-} from "lucide-react";
-import { Badge, Button, Field, IconButton, Input, SectionCard } from "../ui";
-import { ConfirmModal, Modal } from "../Modal";
+import { FilePlus2, FolderOpen, Layers, RefreshCw, Trash2, Upload } from "lucide-react";
 import { skillApi } from "../../api/asset";
+import { validateAssetLocation } from "../../lib/assetPath";
+import { formatBytes } from "../../lib/format";
+import type { AssetResourceType, AssetUploadTicket, SkillVersionBundle } from "../../lib/types";
 import { toast } from "../../stores/toastStore";
+import { ConfirmModal } from "../Modal";
+import { Badge, Button, EmptyState, IconButton, SectionCard, Spinner } from "../ui";
 import {
   REFERENCE_TEMPLATE,
   SKILL_MD_TEMPLATE,
@@ -23,91 +18,78 @@ import {
   nextKey,
   type WorkspaceEntry,
 } from "./workspace";
-import type { AssetResourceType, AssetUploadTicket, SkillVersionBundle } from "../../lib/types";
 
-/** 资产工作区：本地编辑条目 → 上传到草稿；支持载入远端结构、发布、Fork、删除远端资产。 */
 export function AssetWorkspaceCard({
   resourceId,
   draftVersion,
+  bundle,
+  loading,
+  editable,
   entries,
   onEntriesChange,
-  ensureBundle,
-  onRefreshDraft,
-  onAfterPublish,
-  onForked,
+  onRefresh,
 }: {
   resourceId: string;
   draftVersion: number;
+  bundle: SkillVersionBundle | null;
+  loading: boolean;
+  editable: boolean;
   entries: WorkspaceEntry[];
   onEntriesChange: (entries: WorkspaceEntry[]) => void;
-  ensureBundle: (kind: "draft" | "published") => Promise<SkillVersionBundle | null>;
-  onRefreshDraft: () => Promise<void>;
-  onAfterPublish: () => Promise<void>;
-  onForked: (resourceId: string) => void;
+  onRefresh: () => void;
 }) {
-  const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [loadingStructure, setLoadingStructure] = useState<"draft" | "published" | null>(null);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [publishOpen, setPublishOpen] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [forkOpen, setForkOpen] = useState(false);
-  const [forking, setForking] = useState(false);
-  const [forkName, setForkName] = useState("");
-  const [forkVersion, setForkVersion] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingAssets, setDeletingAssets] = useState(false);
 
+  useEffect(() => {
+    setSelectedAssetIds(new Set());
+  }, [bundle]);
+
   const patchEntry = (key: string, patch: Partial<WorkspaceEntry>) =>
-    onEntriesChange(entries.map((e) => (e.key === key ? { ...e, ...patch } : e)));
+    onEntriesChange(entries.map((entry) => (entry.key === key ? { ...entry, ...patch } : entry)));
 
-  const removeEntry = (key: string) => {
-    onEntriesChange(entries.filter((e) => e.key !== key));
-    setChecked((prev) => {
-      if (!prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
+  const loadStructure = () => {
+    if (!bundle) return;
+    onEntriesChange(
+      bundle.assets.map((asset) => ({
+        key: nextKey(),
+        name: asset.name,
+        path: asset.path,
+        assetResourceType: asset.assetResourceType,
+        content: "",
+        remote: asset.id,
+      })),
+    );
+    toast.success(`已载入 ${bundle.assets.length} 个文件条目`);
   };
 
-  // ---- 载入远端结构 ----
-  const loadStructure = async (kind: "draft" | "published") => {
-    setLoadingStructure(kind);
-    try {
-      const bundle = await ensureBundle(kind);
-      if (!bundle) return;
-      onEntriesChange(
-        bundle.assets.map((a) => ({
-          key: nextKey(),
-          name: a.name,
-          path: a.path,
-          assetResourceType: a.assetResourceType,
-          content: "",
-          remote: a.id,
-        })),
-      );
-      setChecked(new Set());
-      toast.success(`已载入 ${bundle.assets.length} 个资产结构（内容未拉取，填入后可上传覆盖）`);
-    } finally {
-      setLoadingStructure(null);
-    }
-  };
-
-  // ---- 新建条目 ----
   const addSkillMd = () =>
     onEntriesChange([
       ...entries,
-      { key: nextKey(), name: "SKILL.md", path: "/", assetResourceType: "MD", content: SKILL_MD_TEMPLATE },
+      {
+        key: nextKey(),
+        name: "SKILL.md",
+        path: "/",
+        assetResourceType: "MD",
+        content: SKILL_MD_TEMPLATE,
+      },
     ]);
 
   const addReference = () =>
     onEntriesChange([
       ...entries,
-      { key: nextKey(), name: "", path: "/references/", assetResourceType: "MD", content: REFERENCE_TEMPLATE },
+      {
+        key: nextKey(),
+        name: "reference.md",
+        path: "/references",
+        assetResourceType: "MD",
+        content: REFERENCE_TEMPLATE,
+      },
     ]);
 
-  // ---- 从本地导入 ----
   const importLocal = async () => {
     setImporting(true);
     try {
@@ -115,7 +97,10 @@ export function AssetWorkspaceCard({
         title: "选择要导入的文件",
         multiple: false,
         filters: [
-          { name: "文本文件", extensions: ["md", "markdown", "txt", "py", "json", "yaml", "yml", "toml"] },
+          {
+            name: "文本文件",
+            extensions: ["md", "markdown", "txt", "py", "json", "yaml", "yml", "toml"],
+          },
         ],
       });
       if (!picked) return;
@@ -123,26 +108,32 @@ export function AssetWorkspaceCard({
       const base = picked.replace(/\\/g, "/").split("/").pop() ?? "file.txt";
       onEntriesChange([
         ...entries,
-        { key: nextKey(), name: base, path: "/", assetResourceType: guessAssetType(base), content },
+        {
+          key: nextKey(),
+          name: base,
+          path: "/",
+          assetResourceType: guessAssetType(base),
+          content,
+        },
       ]);
       toast.success(`已导入 ${base}`);
-    } catch (e) {
-      toast.error(`导入失败：${errText(e)}`);
+    } catch (error) {
+      toast.error(`导入失败：${errText(error)}`);
     } finally {
       setImporting(false);
     }
   };
 
-  // ---- 上传资产 ----
   const upload = async () => {
-    const targets = entries.filter((e) => e.content.trim().length > 0);
+    const targets = entries.filter((entry) => entry.content.length > 0);
     if (targets.length === 0) {
-      toast.info("没有需要上传的资产（所有条目内容均为空）");
+      toast.info("没有需要上传的文件内容");
       return;
     }
-    for (const e of targets) {
-      if (!e.name.trim() || !e.path.trim()) {
-        toast.error("存在未填写名称或路径的资产，请补全后再上传");
+    for (const entry of targets) {
+      const locationError = validateAssetLocation(entry.path.trim(), entry.name.trim());
+      if (locationError) {
+        toast.error(`${entry.name || "未命名文件"}：${locationError}`);
         return;
       }
     }
@@ -155,339 +146,246 @@ export function AssetWorkspaceCard({
         md5: string;
         expectedSize: number;
       }> = [];
-      for (const e of targets) {
-        const md5 = await invoke<string>("text_md5", { content: e.content });
-        const expectedSize = new TextEncoder().encode(e.content).length;
+      for (const entry of targets) {
         assets.push({
-          name: e.name.trim(),
-          path: e.path.trim(),
-          assetResourceType: e.assetResourceType,
-          md5,
-          expectedSize,
+          name: entry.name.trim(),
+          path: entry.path.trim(),
+          assetResourceType: entry.assetResourceType,
+          md5: await invoke<string>("text_md5", { content: entry.content }),
+          expectedSize: new TextEncoder().encode(entry.content).length,
         });
       }
-      const resp = await skillApi.initUploadSkillAssets({ resourceId, draftVersion, assets });
-      for (const ticket of resp.assetUploadTickets) {
+      const response = await skillApi.initUploadSkillAssets({ resourceId, draftVersion, assets });
+      for (const ticket of response.assetUploadTickets) {
         if (ticket.flashUploaded) continue;
         const entry = matchEntry(targets, ticket);
-        if (!entry) {
-          throw new Error(`上传票据 ${ticket.path}${ticket.name} 无法匹配工作区条目`);
-        }
+        if (!entry) throw new Error(`上传票据 ${ticket.path}/${ticket.name} 无法匹配文件`);
         await invoke("oss_put_text", {
           putUrl: ticket.putUrl,
           callbackHeader: ticket.callbackHeader || null,
           content: entry.content,
         });
       }
-      toast.success(`已上传 ${targets.length} 个资产到草稿 v${draftVersion}`);
-      await onRefreshDraft();
-    } catch (e) {
-      toast.error(`上传失败：${errText(e)}`);
+      toast.success(`已上传 ${targets.length} 个文件到草稿 v${draftVersion}`);
+      onRefresh();
+    } catch (error) {
+      toast.error(`上传失败：${errText(error)}`);
     } finally {
       setUploading(false);
     }
   };
 
-  // ---- 发布 ----
-  const publish = async () => {
-    setPublishing(true);
-    try {
-      await skillApi.publishSkillVersion(resourceId);
-      toast.success("发布成功");
-      setPublishOpen(false);
-      await onAfterPublish();
-    } catch (e) {
-      toast.error(`发布失败：${errText(e)}`);
-    } finally {
-      setPublishing(false);
-    }
-  };
-
-  // ---- Fork ----
-  const fork = async () => {
-    const name = forkName.trim();
-    if (!name) {
-      toast.error("请填写 Fork 后的资源名称");
-      return;
-    }
-    const vText = forkVersion.trim();
-    const version = vText ? parseInt(vText, 10) : undefined;
-    if (version !== undefined && (Number.isNaN(version) || version < 1)) {
-      toast.error("Fork 版本号必须是正整数");
-      return;
-    }
-    setForking(true);
-    try {
-      const newId = await skillApi.forkSkill({
-        resourceId,
-        forkedResourceName: name,
-        ...(version !== undefined ? { forkedResourceVersion: version } : {}),
-      });
-      toast.success("Fork 成功");
-      setForkOpen(false);
-      setForkName("");
-      setForkVersion("");
-      onForked(newId);
-    } catch (e) {
-      toast.error(`Fork 失败：${errText(e)}`);
-    } finally {
-      setForking(false);
-    }
-  };
-
-  // ---- 删除远端资产 ----
-  const checkedRemote = entries.filter((e) => e.remote && checked.has(e.key));
   const deleteRemote = async () => {
-    const assetIds = checkedRemote.map((e) => e.remote!);
-    if (assetIds.length === 0) return;
+    if (selectedAssetIds.size === 0) return;
     setDeletingAssets(true);
     try {
-      await skillApi.deleteSkillAssets(resourceId, draftVersion, assetIds);
-      toast.success(`已删除 ${assetIds.length} 个远端资产`);
+      await skillApi.deleteSkillAssets(resourceId, draftVersion, [...selectedAssetIds]);
+      toast.success(`已删除 ${selectedAssetIds.size} 个草稿文件`);
       setDeleteOpen(false);
-      setChecked(new Set());
-      onEntriesChange(
-        entries.map((e) => (checked.has(e.key) ? { ...e, remote: undefined } : e)),
-      );
-      await onRefreshDraft();
-    } catch (e) {
-      toast.error(`删除远端资产失败：${errText(e)}`);
+      onRefresh();
+    } catch (error) {
+      toast.error(`删除失败：${errText(error)}`);
     } finally {
       setDeletingAssets(false);
     }
   };
 
+  if (loading && !bundle) {
+    return <div className="flex justify-center py-16"><Spinner size={20} /></div>;
+  }
+  if (!bundle) {
+    return <EmptyState title="版本文件加载失败" action={<Button onClick={onRefresh}>重新加载</Button>} />;
+  }
+
   return (
-    <SectionCard
-      title="资产工作区"
-      description={`本地编辑后上传到草稿 v${draftVersion}；内容留空的条目不会被上传。`}
-      actions={
-        <>
-          <Button
-            size="sm"
-            variant="outline"
-            icon={<GitFork size={13} />}
-            onClick={() => {
-              setForkName("");
-              setForkVersion("");
-              setForkOpen(true);
-            }}
-          >
-            Fork
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            icon={<Rocket size={13} />}
-            onClick={() => setPublishOpen(true)}
-          >
-            发布当前草稿
-          </Button>
-          <Button
-            size="sm"
-            variant="primary"
-            icon={<Upload size={13} />}
-            loading={uploading}
-            onClick={() => void upload()}
-          >
-            上传资产
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        {/* 工具栏 */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="xs"
-            variant="outline"
-            icon={<Layers size={12} />}
-            loading={loadingStructure === "draft"}
-            onClick={() => void loadStructure("draft")}
-          >
-            从草稿载入结构
-          </Button>
-          <Button
-            size="xs"
-            variant="outline"
-            icon={<Layers size={12} />}
-            loading={loadingStructure === "published"}
-            onClick={() => void loadStructure("published")}
-          >
-            从已发布载入结构
-          </Button>
-          <Button size="xs" variant="outline" icon={<FilePlus2 size={12} />} onClick={addSkillMd}>
-            新建 SKILL.md
-          </Button>
-          <Button size="xs" variant="outline" icon={<FilePlus2 size={12} />} onClick={addReference}>
-            新建 references 文件
-          </Button>
-          <Button
-            size="xs"
-            variant="outline"
-            icon={<FolderOpen size={12} />}
-            loading={importing}
-            onClick={() => void importLocal()}
-          >
-            从本地导入
-          </Button>
-          {checkedRemote.length > 0 && (
-            <Button
-              size="xs"
-              variant="danger"
-              icon={<Trash2 size={12} />}
-              className="ml-auto"
-              onClick={() => setDeleteOpen(true)}
-            >
-              删除所选远端资产（{checkedRemote.length}）
-            </Button>
+    <>
+      <SectionCard
+        title={`文件 · v${bundle.version}`}
+        description={editable ? "草稿文件" : "已发布版本快照（只读）"}
+        actions={
+          <>
+            <IconButton title="刷新版本" onClick={onRefresh}><RefreshCw size={14} /></IconButton>
+            {editable && (
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<Upload size={14} />}
+                loading={uploading}
+                onClick={() => void upload()}
+              >
+                上传工作区
+              </Button>
+            )}
+          </>
+        }
+        bodyClassName="p-0"
+      >
+        <div className="border-b border-line">
+          <div className="flex min-h-11 items-center gap-2 px-4 py-2">
+            <span className="text-[13px] font-medium text-fg">远端文件</span>
+            <Badge tone="gray">{bundle.assets.length}</Badge>
+            {editable && selectedAssetIds.size > 0 && (
+              <Button
+                size="xs"
+                variant="danger"
+                icon={<Trash2 size={12} />}
+                className="ml-auto"
+                onClick={() => setDeleteOpen(true)}
+              >
+                删除所选（{selectedAssetIds.size}）
+              </Button>
+            )}
+          </div>
+          {bundle.assets.length === 0 ? (
+            <EmptyState title="该版本暂无文件" className="min-h-[120px]" />
+          ) : (
+            <div className="overflow-x-auto border-t border-line">
+              <table className="w-full min-w-[680px] text-xs">
+                <thead className="bg-bg-sunken text-left text-fg-faint">
+                  <tr>
+                    {editable && <th className="w-10 px-4 py-2 font-medium" />}
+                    <th className="px-3 py-2 font-medium">文件</th>
+                    <th className="px-3 py-2 font-medium">类型</th>
+                    <th className="px-3 py-2 font-medium">大小</th>
+                    <th className="px-3 py-2 font-medium">状态</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {bundle.assets.map((asset) => (
+                    <tr key={asset.id}>
+                      {editable && (
+                        <td className="px-4 py-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`选择 ${asset.name}`}
+                            className="h-3.5 w-3.5 cursor-pointer accent-accent"
+                            checked={selectedAssetIds.has(asset.id)}
+                            onChange={(event) =>
+                              setSelectedAssetIds((current) => {
+                                const next = new Set(current);
+                                if (event.target.checked) next.add(asset.id);
+                                else next.delete(asset.id);
+                                return next;
+                              })
+                            }
+                          />
+                        </td>
+                      )}
+                      <td className="px-3 py-2 font-mono text-[11px] text-fg">
+                        {asset.path === "/" ? "/" : `${asset.path}/`}{asset.name}
+                      </td>
+                      <td className="px-3 py-2"><Badge>{asset.assetResourceType}</Badge></td>
+                      <td className="px-3 py-2 text-fg-muted">{formatBytes(asset.size)}</td>
+                      <td className="px-3 py-2">
+                        <Badge tone={asset.uploadStatus === "AVAILABLE" ? "green" : "yellow"}>
+                          {asset.uploadStatus === "AVAILABLE" ? "可用" : "上传中"}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
-        {/* 条目列表 */}
-        {entries.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-xs leading-5 text-fg-faint">
-            工作区为空。可「载入结构」从远端版本开始，或新建 / 导入文件；
-            <br />
-            每个 Skill 至少需要一个 /SKILL.md。
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {entries.map((e) => (
-              <div key={e.key} className="overflow-hidden rounded-lg border border-line">
-                <div className="flex items-center gap-2 border-b border-line bg-bg-sunken px-2.5 py-1.5">
-                  {e.remote && (
-                    <input
-                      type="checkbox"
-                      title="勾选后可批量删除远端资产"
-                      className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-accent"
-                      checked={checked.has(e.key)}
-                      onChange={(ev) =>
-                        setChecked((prev) => {
-                          const next = new Set(prev);
-                          if (ev.target.checked) next.add(e.key);
-                          else next.delete(e.key);
-                          return next;
-                        })
-                      }
+        {editable && (
+          <div>
+            <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2">
+              <span className="mr-1 text-[13px] font-medium text-fg">本地工作区</span>
+              <Button size="xs" variant="outline" icon={<Layers size={12} />} onClick={loadStructure}>
+                载入远端结构
+              </Button>
+              <Button size="xs" variant="outline" icon={<FilePlus2 size={12} />} onClick={addSkillMd}>
+                新建 SKILL.md
+              </Button>
+              <Button size="xs" variant="outline" icon={<FilePlus2 size={12} />} onClick={addReference}>
+                新建参考文件
+              </Button>
+              <Button
+                size="xs"
+                variant="outline"
+                icon={<FolderOpen size={12} />}
+                loading={importing}
+                onClick={() => void importLocal()}
+              >
+                导入文件
+              </Button>
+            </div>
+            <div className="space-y-3 p-4">
+              {entries.length === 0 ? (
+                <EmptyState title="本地工作区为空" className="min-h-[120px]" />
+              ) : (
+                entries.map((entry) => (
+                  <div key={entry.key} className="overflow-hidden rounded-lg border border-line">
+                    <div className="flex items-center gap-2 border-b border-line bg-bg-sunken px-2.5 py-1.5">
+                      <input
+                        value={entry.name}
+                        placeholder="文件名"
+                        spellCheck={false}
+                        className="h-7 min-w-0 flex-1 rounded-md border border-line bg-bg-elev px-2 font-mono text-xs text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none"
+                        onChange={(event) => patchEntry(entry.key, { name: event.target.value })}
+                      />
+                      <input
+                        value={entry.path}
+                        placeholder="目录，如 / 或 /references"
+                        title="远端目录路径"
+                        spellCheck={false}
+                        className="h-7 w-48 shrink-0 rounded-md border border-line bg-bg-elev px-2 font-mono text-xs text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none"
+                        onChange={(event) => patchEntry(entry.key, { path: event.target.value })}
+                      />
+                      <select
+                        value={entry.assetResourceType}
+                        className="h-7 w-32 shrink-0 cursor-pointer rounded-md border border-line bg-bg-elev px-1.5 text-xs text-fg focus:border-accent focus:outline-none"
+                        onChange={(event) =>
+                          patchEntry(entry.key, {
+                            assetResourceType: event.target.value as WorkspaceEntry["assetResourceType"],
+                          })
+                        }
+                      >
+                        {TYPE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                      {entry.remote && <Badge tone="blue">远端结构</Badge>}
+                      <IconButton
+                        title="移除工作区条目"
+                        className="hover:text-danger"
+                        onClick={() => onEntriesChange(entries.filter((item) => item.key !== entry.key))}
+                      >
+                        <Trash2 size={13} />
+                      </IconButton>
+                    </div>
+                    <textarea
+                      value={entry.content}
+                      placeholder={entry.remote ? "远端接口不返回文件内容；填入完整内容后可覆盖上传" : "文件内容"}
+                      spellCheck={false}
+                      rows={8}
+                      className="w-full resize-y border-0 bg-bg-elev px-3 py-2 font-mono text-xs leading-relaxed text-fg placeholder:text-fg-faint focus:outline-none"
+                      onChange={(event) => patchEntry(entry.key, { content: event.target.value })}
                     />
-                  )}
-                  <input
-                    value={e.name}
-                    onChange={(ev) => patchEntry(e.key, { name: ev.target.value })}
-                    placeholder="文件名，如 SKILL.md"
-                    spellCheck={false}
-                    className="h-7 min-w-0 flex-1 rounded-md border border-line bg-bg-elev px-2 font-mono text-xs text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none"
-                  />
-                  <input
-                    value={e.path}
-                    onChange={(ev) => patchEntry(e.key, { path: ev.target.value })}
-                    placeholder="/"
-                    title="远端目录路径"
-                    spellCheck={false}
-                    className="h-7 w-32 shrink-0 rounded-md border border-line bg-bg-elev px-2 font-mono text-xs text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none"
-                  />
-                  <select
-                    value={e.assetResourceType}
-                    onChange={(ev) =>
-                      patchEntry(e.key, {
-                        assetResourceType: ev.target.value as WorkspaceEntry["assetResourceType"],
-                      })
-                    }
-                    className="h-7 w-32 shrink-0 cursor-pointer rounded-md border border-line bg-bg-elev px-1.5 text-xs text-fg focus:border-accent focus:outline-none"
-                  >
-                    {TYPE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  {e.remote && <Badge tone="blue">远端</Badge>}
-                  <IconButton title="删除该条目" className="hover:text-danger" onClick={() => removeEntry(e.key)}>
-                    <Trash2 size={13} />
-                  </IconButton>
-                </div>
-                <div className="p-2.5">
-                  <textarea
-                    value={e.content}
-                    onChange={(ev) => patchEntry(e.key, { content: ev.target.value })}
-                    placeholder={
-                      e.remote
-                        ? "（远端结构条目：内容未拉取；填入内容后可上传覆盖远端文件）"
-                        : "在此编写文件内容"
-                    }
-                    spellCheck={false}
-                    rows={7}
-                    className="w-full resize-y rounded-lg border border-line bg-bg-elev px-3 py-2 font-mono text-xs leading-relaxed text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                  />
-                </div>
-              </div>
-            ))}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         )}
-      </div>
-
-      <ConfirmModal
-        open={publishOpen}
-        onClose={() => setPublishOpen(false)}
-        title="发布当前草稿"
-        message={`确定将草稿 v${draftVersion} 发布为新版本吗？发布后已上传的资产将生效。`}
-        confirmText="发布"
-        loading={publishing}
-        onConfirm={() => void publish()}
-      />
+      </SectionCard>
 
       <ConfirmModal
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        title="删除远端资产"
-        message={`确定从草稿 v${draftVersion} 删除勾选的 ${checkedRemote.length} 个远端资产吗？此操作不可撤销。`}
+        title="删除草稿文件"
+        message={`确定从草稿 v${draftVersion} 删除所选 ${selectedAssetIds.size} 个文件吗？`}
         confirmText="删除"
         danger
         loading={deletingAssets}
         onConfirm={() => void deleteRemote()}
       />
-
-      <Modal
-        open={forkOpen}
-        onClose={() => setForkOpen(false)}
-        title="Fork Skill"
-        width="max-w-md"
-        footer={
-          <>
-            <Button onClick={() => setForkOpen(false)}>取消</Button>
-            <Button variant="primary" loading={forking} onClick={() => void fork()}>
-              Fork
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          <Field label="新资源名称" hint="必填，Fork 生成的 Skill 名称">
-            <Input
-              value={forkName}
-              onChange={(e) => setForkName(e.target.value)}
-              placeholder="如：weekly-report-writer-copy"
-              autoFocus
-              spellCheck={false}
-            />
-          </Field>
-          <Field label="源版本号" hint="可选；留空则 Fork 最新版本">
-            <Input
-              type="number"
-              min={1}
-              value={forkVersion}
-              onChange={(e) => setForkVersion(e.target.value)}
-              placeholder="留空 = 最新版本"
-            />
-          </Field>
-        </div>
-      </Modal>
-    </SectionCard>
+    </>
   );
 }
 
-/** 按 name+path 匹配上传票据对应的工作区条目。 */
 function matchEntry(targets: WorkspaceEntry[], ticket: AssetUploadTicket): WorkspaceEntry | undefined {
-  return targets.find((e) => e.name.trim() === ticket.name && e.path.trim() === ticket.path);
+  return targets.find((entry) => entry.name.trim() === ticket.name && entry.path.trim() === ticket.path);
 }

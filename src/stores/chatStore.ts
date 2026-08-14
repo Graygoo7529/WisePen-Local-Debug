@@ -92,6 +92,8 @@ export interface LiveTurn {
 }
 
 export interface RequestOptions {
+  /** 新会话绑定的 Agent；已有会话的 Agent 由 session.agent_id 决定。 */
+  agentId: string;
   model: string;
   providerId: string;
   runtimeOptionsText: string;
@@ -102,6 +104,7 @@ export interface RequestOptions {
 }
 
 export const defaultRequestOptions = (): RequestOptions => ({
+  agentId: "",
   model: useSettingsStore.getState().defaultModel,
   providerId: "",
   runtimeOptionsText: "",
@@ -242,7 +245,7 @@ interface ChatState {
   selectSession: (id: string) => Promise<void>;
   syncCurrentTurn: () => Promise<void>;
   refreshSession: () => Promise<void>;
-  createSession: (title?: string) => Promise<void>;
+  createSession: (title?: string, agentId?: string | null) => Promise<SessionInfo | null>;
   removeSession: (id: string) => Promise<void>;
   renameSession: (id: string, title: string) => Promise<void>;
   togglePin: (id: string, pin: boolean) => Promise<void>;
@@ -603,9 +606,12 @@ export const useChatStore = create<ChatState>((set, getState) => {
     }
   },
 
-  createSession: async (title) => {
+  createSession: async (title, agentId) => {
     try {
-      const session = await chatApi.createSession(title || undefined);
+      const session = await chatApi.createSession(
+        title || undefined,
+        agentId === undefined ? getState().options.agentId || null : agentId,
+      );
       disconnectLocalStream();
       set((s) => ({
         sessions: [session, ...s.sessions],
@@ -620,8 +626,10 @@ export const useChatStore = create<ChatState>((set, getState) => {
         userDefinedAttachmentIds: [],
       }));
       toast.success("已创建新会话");
+      return session;
     } catch (e) {
       toast.error(`创建会话失败：${errText(e)}`);
+      return null;
     }
   },
 
@@ -707,7 +715,10 @@ export const useChatStore = create<ChatState>((set, getState) => {
     let sessionId = state.currentSessionId;
     if (!sessionId) {
       try {
-        const session = await chatApi.createSession();
+        const session = await chatApi.createSession(
+          undefined,
+          state.options.agentId || null,
+        );
         set((s) => ({
           sessions: [session, ...s.sessions],
           currentSessionId: session.id,
@@ -879,7 +890,10 @@ export const useChatStore = create<ChatState>((set, getState) => {
 
       let sessionId = getState().currentSessionId;
       if (!sessionId) {
-        const session = await chatApi.createSession();
+        const session = await chatApi.createSession(
+          undefined,
+          getState().options.agentId || null,
+        );
         set((s) => ({
           sessions: [session, ...s.sessions],
           currentSessionId: session.id,

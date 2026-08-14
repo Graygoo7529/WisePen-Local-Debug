@@ -51,6 +51,7 @@ export function buildHeaders(service: ServiceKey): Record<string, string> {
   };
   // Chat 服务也会继续调用 Java 服务，必须保留完整身份上下文。
   if (s.identityType) h["X-Identity-Type"] = s.identityType;
+  if (s.userStatus) h["X-User-Status"] = s.userStatus;
   if (s.groupRoleMap) h["X-Group-Role-Map"] = s.groupRoleMap;
   if (s.developer) h["developer"] = s.developer;
   if (s.xDeveloper) h["X-Developer"] = s.xDeveloper;
@@ -97,7 +98,13 @@ export async function request<T>(service: ServiceKey, opts: RequestOptions): Pro
     );
   }
   if (resp.status >= 400) {
-    throw new ApiError(`HTTP ${resp.status}`, resp.status, undefined, resp.body);
+    const detail = responseErrorMessage(resp.body);
+    throw new ApiError(
+      detail ? `HTTP ${resp.status}：${detail}` : `HTTP ${resp.status}`,
+      resp.status,
+      undefined,
+      resp.body,
+    );
   }
   const body = resp.body as Partial<R<T>> & { _text?: string };
   if (body && typeof body === "object" && typeof body.code === "number") {
@@ -106,6 +113,14 @@ export async function request<T>(service: ServiceKey, opts: RequestOptions): Pro
   }
   // 未包裹 R<T> 的响应原样返回
   return resp.body as T;
+}
+
+function responseErrorMessage(body: unknown): string | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const value = body as { msg?: unknown; _text?: unknown };
+  if (typeof value.msg === "string" && value.msg.trim()) return value.msg.trim();
+  if (typeof value._text === "string" && value._text.trim()) return value._text.trim();
+  return undefined;
 }
 
 export const get = <T>(service: ServiceKey, path: string, query?: RequestOptions["query"]) =>

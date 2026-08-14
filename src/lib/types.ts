@@ -304,7 +304,7 @@ export interface AgentVersionBundle {
   version: number;
   status: "DRAFT" | "PUBLISHED";
   assets: AssetInfo[];
-  spec: AgentSpec;
+  spec: AgentSpec | null;
 }
 
 export interface AgentResourceInfoResponse {

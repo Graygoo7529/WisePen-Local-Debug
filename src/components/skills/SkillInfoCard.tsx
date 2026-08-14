@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Badge, Button, CopyButton, Field, Input, SectionCard } from "../ui";
 import { skillApi } from "../../api/asset";
+import { resourceApi } from "../../api/resource";
 import { toast } from "../../stores/toastStore";
 import { errText } from "./workspace";
 import type { SkillResourceInfoResponse } from "../../lib/types";
@@ -15,28 +16,38 @@ export function SkillInfoCard({
 }) {
   const { resourceInfo, skillInfo } = info;
   const [name, setName] = useState(skillInfo.name);
+  const [resourceName, setResourceName] = useState(resourceInfo.resourceName);
   const [description, setDescription] = useState(skillInfo.description);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setName(info.skillInfo.name);
+    setResourceName(info.resourceInfo.resourceName);
     setDescription(info.skillInfo.description);
   }, [info]);
 
-  const dirty = name !== skillInfo.name || description !== skillInfo.description;
+  const dirty =
+    name !== skillInfo.name ||
+    resourceName !== resourceInfo.resourceName ||
+    description !== skillInfo.description;
 
   const save = async () => {
-    if (!name.trim()) {
-      toast.error("名称不能为空");
+    if (!resourceName.trim()) {
+      toast.error("资源标题不能为空");
       return;
     }
     setSaving(true);
     try {
-      await skillApi.changeSkillInfo({
-        resourceId: resourceInfo.resourceId,
-        name: name.trim(),
-        description,
-      });
+      if (resourceName !== resourceInfo.resourceName) {
+        await resourceApi.renameResource(resourceInfo.resourceId, resourceName.trim());
+      }
+      if (name !== skillInfo.name || description !== skillInfo.description) {
+        await skillApi.changeSkillInfo({
+          resourceId: resourceInfo.resourceId,
+          name: name.trim(),
+          description,
+        });
+      }
       toast.success("已保存 Skill 信息");
       await onSaved();
     } catch (e) {
@@ -75,10 +86,13 @@ export function SkillInfoCard({
           <span className="text-fg-faint">资源标题：{resourceInfo.resourceName || "-"}</span>
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="名称">
+          <Field label="资源标题">
+            <Input value={resourceName} onChange={(e) => setResourceName(e.target.value)} />
+          </Field>
+          <Field label="Skill 内部名称">
             <Input value={name} onChange={(e) => setName(e.target.value)} spellCheck={false} />
           </Field>
-          <Field label="描述" className="md:col-span-1">
+          <Field label="描述" className="md:col-span-2">
             <Input value={description} onChange={(e) => setDescription(e.target.value)} />
           </Field>
         </div>

@@ -71,8 +71,10 @@ function TagInput({
 /** 对话请求参数面板：模型、Skill、工具名单、frontend_states 上下文模拟、runtime_options。 */
 export function RequestOptionsPanel() {
   const options = useChatStore((s) => s.options);
+  const currentSession = useChatStore((s) => s.currentSession);
   const setOptions = useChatStore((s) => s.setOptions);
   const [models, setModels] = useState<AvailableModels | null>(null);
+  const [agents, setAgents] = useState<ResourceItem[]>([]);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
 
   useEffect(() => {
@@ -84,11 +86,32 @@ export function RequestOptionsPanel() {
       });
   }, []);
 
+  useEffect(() => {
+    resourceApi
+      .listResources({ resourceType: "AGENT", size: 50 })
+      .then((page) => setAgents(page.list))
+      .catch(() => {
+        /* Agent 列表不可用时仍可手工输入 Agent ID */
+      });
+  }, []);
+
   const allModels: ModelInfo[] = models
     ? [...models.system_models, ...models.user_models]
     : [];
   const selectedModel = allModels.find((m) => m.id === options.model);
   const mappings = selectedModel?.mappings ?? [];
+  const sessionAgentId = currentSession?.agent_id ?? "";
+  const agentValue = currentSession ? sessionAgentId : options.agentId;
+  const agentOptions = [
+    { value: "", label: "默认 Agent" },
+    ...agents.map((agent) => ({
+      value: agent.resourceId,
+      label: `${agent.resourceName}（${agent.resourceId.slice(0, 8)}…）`,
+    })),
+    ...(agentValue && !agents.some((agent) => agent.resourceId === agentValue)
+      ? [{ value: agentValue, label: `手工 Agent（${agentValue}）` }]
+      : []),
+  ];
 
   const addState = (preset?: FrontendState) => {
     setOptions({
@@ -103,6 +126,35 @@ export function RequestOptionsPanel() {
 
   return (
     <div className="space-y-3 border-t border-line bg-bg-elev px-4 py-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Field
+          label={currentSession ? "会话 Agent" : "新会话 Agent"}
+          hint={currentSession ? "会话创建后版本固定" : "也可在新建会话弹窗中选择"}
+        >
+          <Select
+            value={agentValue}
+            disabled={Boolean(currentSession)}
+            onChange={(e) => setOptions({ agentId: e.target.value })}
+            options={agentOptions}
+          />
+        </Field>
+        <Field label="Agent ID" hint="资源列表没有结果时可直接输入">
+          <Input
+            value={agentValue}
+            disabled={Boolean(currentSession)}
+            onChange={(e) => setOptions({ agentId: e.target.value.trim() })}
+            placeholder="留空使用默认 Agent"
+            spellCheck={false}
+          />
+        </Field>
+      </div>
+
+      {currentSession?.agent_id && (
+        <div className="text-xs text-fg-muted">
+          当前绑定版本：<span className="font-mono text-accent">v{currentSession.agent_version ?? "-"}</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <Field label="模型">
           <Select

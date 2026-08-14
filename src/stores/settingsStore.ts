@@ -13,6 +13,7 @@ export interface ConnectionSettings {
   fromSource: string;
   userId: string;
   identityType: string;
+  userStatus: string;
   groupRoleMap: string;
   developer: string;
   xDeveloper: string;
@@ -62,6 +63,7 @@ const IDENTITY_KEYS = [
   "fromSource",
   "userId",
   "identityType",
+  "userStatus",
   "groupRoleMap",
   "developer",
   "xDeveloper",
@@ -86,6 +88,7 @@ export const useSettingsStore = create<SettingsState>()(
       fromSource: "",
       userId: "",
       identityType: "1",
+      userStatus: "1",
       groupRoleMap: "{}",
       developer: "true",
       xDeveloper: "",

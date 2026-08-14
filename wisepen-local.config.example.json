@@ -12,6 +12,7 @@
     "fromSource": "<内部来源凭据，见 Docs/DevEnv/微服务调试指南.md>",
     "userId": "<测试用户 ID>",
     "identityType": "1",
+    "userStatus": "1",
     "groupRoleMap": "{}",
     "developer": "true",
     "xDeveloper": "<开发者名，可留空>"

@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { MessageSquarePlus, Pin, PinOff, Trash2 } from "lucide-react";
 import { cn } from "../../lib/cn";
-import { Button, EmptyState, IconButton, Input, Spinner } from "../ui";
+import { resourceApi } from "../../api/resource";
+import { Button, EmptyState, Field, IconButton, Input, Select, Spinner } from "../ui";
 import { ConfirmModal, Modal } from "../Modal";
 import { useChatStore } from "../../stores/chatStore";
 import { formatRelativeTime } from "../../lib/format";
-import type { SessionInfo } from "../../lib/types";
+import type { ResourceItem, SessionInfo } from "../../lib/types";
 
 /** 会话列表侧栏：新建 / 选择 / 重命名 / 置顶 / 删除。 */
 export function SessionSidebar() {
@@ -22,6 +23,34 @@ export function SessionSidebar() {
   const [renameText, setRenameText] = useState("");
   const [deleting, setDeleting] = useState<SessionInfo | null>(null);
   const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createTitle, setCreateTitle] = useState("");
+  const [createAgentId, setCreateAgentId] = useState("");
+  const [createAgents, setCreateAgents] = useState<ResourceItem[]>([]);
+  const [createAgentsLoading, setCreateAgentsLoading] = useState(false);
+
+  const openCreateModal = () => {
+    setCreateTitle("");
+    setCreateAgentId(useChatStore.getState().options.agentId);
+    setCreateOpen(true);
+    setCreateAgentsLoading(true);
+    resourceApi
+      .listResources({ resourceType: "AGENT", size: 50 })
+      .then((page) => setCreateAgents(page.list))
+      .catch(() => setCreateAgents([]))
+      .finally(() => setCreateAgentsLoading(false));
+  };
+
+  const createAgentOptions = [
+    { value: "", label: "默认 Agent" },
+    ...createAgents.map((agent) => ({
+      value: agent.resourceId,
+      label: `${agent.resourceName}（${agent.resourceId.slice(0, 8)}…）`,
+    })),
+    ...(createAgentId && !createAgents.some((agent) => agent.resourceId === createAgentId)
+      ? [{ value: createAgentId, label: `手工 Agent（${createAgentId}）` }]
+      : []),
+  ];
 
   return (
     <div className="flex w-[248px] shrink-0 flex-col border-r border-line bg-bg-elev">
@@ -30,12 +59,7 @@ export function SessionSidebar() {
           variant="primary"
           className="w-full"
           icon={<MessageSquarePlus size={15} />}
-          loading={creating}
-          onClick={async () => {
-            setCreating(true);
-            await createSession();
-            setCreating(false);
-          }}
+          onClick={openCreateModal}
         >
           新建会话
         </Button>
@@ -106,6 +130,67 @@ export function SessionSidebar() {
         />
       </Modal>
 
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="新建会话"
+        width="max-w-md"
+        footer={
+          <>
+            <Button onClick={() => setCreateOpen(false)}>取消</Button>
+            <Button
+              variant="primary"
+              loading={creating}
+              onClick={async () => {
+                setCreating(true);
+                const session = await createSession(
+                  createTitle.trim() || undefined,
+                  createAgentId.trim() || null,
+                );
+                setCreating(false);
+                if (session) {
+                  setCreateOpen(false);
+                  setCreateTitle("");
+                }
+              }}
+            >
+              创建
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="会话标题" hint="留空时由服务端或 Agent 自动生成">
+            <Input
+              value={createTitle}
+              onChange={(e) => setCreateTitle(e.target.value)}
+              placeholder="可选"
+              autoFocus
+            />
+          </Field>
+          <Field label="绑定 Agent" hint="新会话创建后版本固定">
+            <Select
+              value={createAgentId}
+              onChange={(e) => setCreateAgentId(e.target.value)}
+              disabled={createAgentsLoading}
+              options={createAgentOptions}
+            />
+          </Field>
+          <Field label="Agent ID" hint="资源列表为空时可直接粘贴已发布 Agent ID">
+            <Input
+              value={createAgentId}
+              onChange={(e) => setCreateAgentId(e.target.value.trim())}
+              placeholder="留空使用默认 Agent"
+              spellCheck={false}
+            />
+          </Field>
+          {createAgentsLoading && <div className="text-xs text-fg-faint">正在读取 Agent 列表…</div>}
+          {!createAgentsLoading && createAgents.length === 0 && (
+            <div className="text-xs text-fg-faint">未查询到 Agent 资源；可以直接填写 Agent ID。</div>
+          )}
+        </div>
+      </Modal>
+
       <ConfirmModal
         open={deleting !== null}
         onClose={() => setDeleting(null)}
@@ -172,7 +257,9 @@ function SessionRow({
       </div>
       <div className="mt-0.5 flex items-center gap-2 text-[11px] text-fg-faint">
         <span>{formatRelativeTime(session.updated_at)}</span>
-        {session.agent_id && <span className="text-accent">Agent</span>}
+        {session.agent_id && (
+          <span className="text-accent">Agent v{session.agent_version ?? "-"}</span>
+        )}
       </div>
     </div>
   );

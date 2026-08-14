@@ -40,7 +40,7 @@ cd src-tauri && cargo test   # Rust 单元测试
 
 ## 后端要点
 
-- 身份头：`X-From-Source`（错误→404）、`X-User-Id`；Java 服务另加 `X-Identity-Type`、`X-Group-Role-Map`；灰度 `developer`、`X-Developer`（`client.ts: buildHeaders` 已处理）。
+- 身份头：`X-From-Source`（错误→404）、`X-User-Id`；Java 服务另加 `X-Identity-Type`、`X-User-Status`、`X-Group-Role-Map`；灰度 `developer`、`X-Developer`（`client.ts: buildHeaders` 已处理）。
 - SSE 为 AI SDK 6.x UIMessage Stream：`text-delta` / `reasoning-delta` / `tool-input-start|available` / `tool-output-available` / `error` / `finish` / `[DONE]`；另有 `data-tool-approval-request`、`data-tool-execution-error|denied` 自定义帧。
 - 历史消息：`GET /chat/session/listHistoryMessages`（page=1 最新回合），返回即 UIMessage 形状；**对话历史只从端点读取，不做本地持久化**。
 - Skill 发布流程：`createSkill` → `getSkillInfo` → `initUploadSkillAssets`（需每资产 md5+expectedSize）→ 对非 `flashUploaded` 的 ticket 执行 `oss_put_text` → `getSkillVersionBundleInfo?version=草稿号` 确认 → `publishSkillVersion`。
