@@ -1,0 +1,39 @@
+{
+  "completions_url": "http://127.0.0.1:9200/chat/completions",
+  "session_id": "",
+  "model_id": "6a144c72063a8439b60202e1",
+  "from_source": "APISIX-wX0iR6tY",
+  "user_id": "2043700768034861058",
+  "user_defined_on_demand_skill_ids": [
+    "6a2a2dd8d0624c0863db775b"
+  ],
+  "skill_base_url": "http://localhost:19910",
+  "resource_base_url": "http://localhost:19905",
+  "identity_type": "1",
+  "group_role_map": "{}",
+  "developer": "true",
+  "x_developer": "zllu23",
+  "skill_resource_id": "6a2a2dd8d0624c0863db775b",
+  "skill_records": [
+    {
+      "resource_id": "6a2a2dd8d0624c0863db775b",
+      "title": "AI 调试 Skill",
+      "name": "ai-debug-skill",
+      "description": "最简 Skill/references 流程",
+      "assets": [
+        {
+          "name": "SKILL.md",
+          "path": "/",
+          "skillAssetResourceType": "MD",
+          "content": "# AI 调试 Skill\n\n## Goal\n根据 references 回答问题。\n\n## Instructions\n优先读取 /references/refs.md。"
+        },
+        {
+          "name": "refs.md",
+          "path": "/references",
+          "skillAssetResourceType": "MD",
+          "content": "# References\n\nWisePen 是一个文档、笔记、AI Skill 资产管理系统。"
+        }
+      ]
+    }
+  ]
+}
