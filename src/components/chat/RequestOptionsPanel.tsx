@@ -353,12 +353,21 @@ export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
                 value={st.key}
                 onChange={(e) => patchState(i, { key: e.target.value })}
               />
-              <Textarea
+              {st.key === "workspace_open_resource" && typeof st.value === "object" && st.value !== null ? (
+                <Input
+                  className="flex-1 font-mono text-xs"
+                  placeholder="已打开笔记的资源 ID"
+                  value={String((st.value as Record<string, unknown>).resource_id ?? "")}
+                  onChange={(e) => patchState(i, {
+                    value: { ...st.value as Record<string, unknown>, resource_id: e.target.value },
+                  })}
+                />
+              ) : <Textarea
                 className="min-h-[36px] flex-1 font-mono text-xs"
                 placeholder="value（任意内容，作为字符串注入）"
                 value={typeof st.value === "string" ? st.value : JSON.stringify(st.value)}
                 onChange={(e) => patchState(i, { value: e.target.value })}
-              />
+              />}
               <div className="flex shrink-0 items-center gap-1.5 pt-2">
                 <span className="text-xs text-fg-faint">禁用</span>
                 <Switch
@@ -387,6 +396,17 @@ export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
               onClick={() => addState({ key: "selected_text", value: "（在此粘贴编辑器选中文本）", disabled: false })}
             >
               模拟选中文本
+            </Button>
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => addState({
+                key: "workspace_open_resource",
+                value: { resource_type: "note", resource_id: "", viewer: "note" },
+                disabled: false,
+              })}
+            >
+              模拟打开笔记
             </Button>
           </div>
         </div>

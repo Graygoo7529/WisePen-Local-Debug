@@ -25,4 +25,6 @@ pnpm tauri dev
 
 ## 架构与约定
 
+Chat 修复的前后对照操作见[复现指南](docs/chat-regressions.md)，包含同端口切换版本、保存故障注入和指定会话清缓存命令。
+
 见 [AGENTS.md](./AGENTS.md)。要点：所有后端 HTTP 经 Rust 代理层（`src-tauri/src/`）转发以绕开 WebView CORS；SSE 在 Rust 侧解析后经 Channel 推送；前端只走 `src/api/` 封装；样式只用主题令牌。
