@@ -39,6 +39,7 @@ def main():
         parser.error("--source 中找不到 Chat/Common 源码")
     if args.action == "serve":
         with socket.socket() as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 probe.bind(("127.0.0.1", 9200))
             except OSError:
