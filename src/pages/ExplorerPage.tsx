@@ -192,7 +192,7 @@ export const ENDPOINT_PRESETS: EndpointPreset[] = [
     service: "chat",
     method: "GET",
     path: "/chat/memory/listMemories",
-    label: "查询全部长期记忆",
+    label: "查询长期记忆（默认最多 100 条）",
   },
   {
     service: "chat",

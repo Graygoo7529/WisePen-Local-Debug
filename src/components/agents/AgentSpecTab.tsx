@@ -531,7 +531,7 @@ export function AgentSpecTab({
               />
             </div>
             <NumberField
-              label="长期记忆分数阈值"
+              label="长期记忆语义分数阈值"
               value={memory.longTermMemoryScoreThreshold}
               min={0}
               max={1}
@@ -544,6 +544,9 @@ export function AgentSpecTab({
                 })
               }
             />
+            <p className="text-xs text-fg-muted">
+              先按语义相似度筛选，再按召回数限制结果；不使用重排分数。
+            </p>
             <Field label="记忆摘要 Prompt">
               <Textarea
                 value={memory.summaryPrompt}

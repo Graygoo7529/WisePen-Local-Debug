@@ -7,6 +7,7 @@ import {
   Card,
   CopyButton,
   EmptyState,
+  Select,
   PageHeader,
   Spinner,
 } from "../components/ui";
@@ -62,6 +63,8 @@ function MemoryCard({ item, onDelete }: { item: MemoryItem; onDelete: () => void
 export default function MemoryPage() {
   const [memories, setMemories] = useState<MemoryItem[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [limit, setLimit] = useState(100);
   const [deleteTarget, setDeleteTarget] = useState<MemoryItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
@@ -69,16 +72,19 @@ export default function MemoryPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setMemories(null);
+    setLoadError(null);
     try {
-      const list = await chatApi.listMemories();
+      const list = await chatApi.listMemories(limit);
       setMemories(list);
+      setLoadError(null);
     } catch (e) {
-      toast.error(`加载记忆失败：${errText(e)}`);
-      setMemories((prev) => prev ?? []);
+      setLoadError(`加载记忆失败：${errText(e)}`);
+      setMemories(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [limit]);
 
   useEffect(() => {
     void load();
@@ -121,6 +127,14 @@ export default function MemoryPage() {
           description="对话中沉淀的长期记忆（chat-service /chat/memory）。删除后立即生效，请谨慎操作。"
           actions={
             <>
+              <Select
+                aria-label="记忆列表上限"
+                className="w-36"
+                value={String(limit)}
+                options={[100, 500, 1000].map((value) => ({ value: String(value), label: `最多 ${value} 条` }))}
+                disabled={loading}
+                onChange={(event) => setLimit(Number(event.target.value))}
+              />
               <Button
                 variant="outline"
                 icon={<RefreshCw size={14} />}
@@ -141,7 +155,11 @@ export default function MemoryPage() {
           }
         />
 
-        {memories === null ? (
+        {loadError ? (
+          <div role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-4 py-5 text-sm text-danger">
+            {loadError}
+          </div>
+        ) : memories === null ? (
           <div className="flex justify-center py-16">
             <Spinner size={20} />
           </div>
@@ -156,7 +174,8 @@ export default function MemoryPage() {
         ) : (
           <>
             <div className="mb-3 text-xs text-fg-muted">
-              共 {memories?.length ?? 0} 条记忆
+              已加载 {memories?.length ?? 0} 条记忆 · 本次最多 {limit} 条
+              {memories?.length === limit && "，可能还有未返回的记忆"}
               {loading && <Spinner size={12} className="ml-2 inline-block" />}
             </div>
             <div className="space-y-3">
@@ -192,7 +211,7 @@ export default function MemoryPage() {
         onClose={() => setClearOpen(false)}
         onConfirm={() => void confirmClear()}
         title="清空全部长期记忆"
-        message={`确定清空全部 ${memories?.length ?? 0} 条长期记忆吗？此操作不可恢复，删除后无法找回，请谨慎确认。`}
+        message={`确定清空当前用户的全部长期记忆吗？这也会删除列表上限 ${limit} 条以外的记忆，删除后无法恢复。`}
         confirmText="清空全部"
         danger
         loading={clearing}

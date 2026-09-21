@@ -85,7 +85,7 @@ export const chatApi = {
     }),
 
   // ---- Memory ----
-  listMemories: () => get<MemoryItem[]>("chat", "/chat/memory/listMemories"),
+  listMemories: (limit = 100) => get<MemoryItem[]>("chat", "/chat/memory/listMemories", { limit }),
   deleteMemory: (memoryId: string) =>
     post<unknown>("chat", "/chat/memory/deleteMemory", undefined, { memory_id: memoryId }),
   deleteAllMemories: () => del<unknown>("chat", "/chat/memory/deleteAllMemories"),
