@@ -25,3 +25,4 @@ src-tauri/gen
 # Local overrides（可能包含内部凭据，不提交）
 src-tauri/tauri.conf.local.json
 wisepen-local.config.json
+.reproduction/

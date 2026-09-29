@@ -26,6 +26,8 @@ pnpm tauri dev
 
 使用前在「设置」页填写 `X-From-Source` 与 `X-User-Id`（值见 `Docs/DevEnv/微服务调试指南.md`）；或复制 `wisepen-local.config.example.json` 为 `wisepen-local.config.json`（已 gitignore，不提交）填写后一键导入。后端服务需先启动（见仓库根 `run.txt` 与 `Docs/DevEnv`）。
 
+长期记忆的前后对照步骤见[记忆问题复现指南](docs/memory-regressions.md)，包含固定 Chat 地址、独立测试数据和初始化故障注入。
+
 ## 架构与约定
 
 见 [AGENTS.md](./AGENTS.md)。要点：所有后端 HTTP 经 Rust 代理层（`src-tauri/src/`）转发以绕开 WebView CORS；SSE 在 Rust 侧解析后经 Channel 推送；前端只走 `src/api/` 封装；样式只用主题令牌。
