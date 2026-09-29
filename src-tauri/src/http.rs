@@ -93,3 +93,40 @@ pub async fn http_get_text(url: String, max_bytes: Option<u64>) -> CmdResult<Str
     }
     String::from_utf8(bytes.to_vec()).map_err(|_| CmdError::from("文件不是有效的 UTF-8 文本"))
 }
+
+/// 文档预览需要身份头和二进制响应，不能通过通用 JSON 代理或无身份的 iframe URL 读取。
+#[tauri::command]
+pub async fn http_get_pdf(
+    url: String,
+    headers: HashMap<String, String>,
+) -> CmdResult<tauri::ipc::Response> {
+    const LIMIT: usize = 100 * 1024 * 1024;
+    let mut req = CLIENT.get(&url).timeout(Duration::from_secs(120));
+    for (key, value) in headers {
+        req = req.header(key, value);
+    }
+    let mut resp = req.send().await?;
+    if !resp.status().is_success() {
+        return Err(CmdError::from(format!("PDF 预览失败: HTTP {}", resp.status().as_u16())));
+    }
+    let is_pdf = resp.headers().get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.split(';').next().unwrap_or("").trim() == "application/pdf");
+    if !is_pdf {
+        return Err(CmdError::from("服务未返回 PDF，请检查文档状态与查看权限"));
+    }
+    if resp.content_length().is_some_and(|size| size > LIMIT as u64) {
+        return Err(CmdError::from("PDF 预览超过 100 MiB"));
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = resp.chunk().await? {
+        if chunk.len() > LIMIT - bytes.len() {
+            return Err(CmdError::from("PDF 预览超过 100 MiB"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if !bytes.starts_with(b"%PDF-") {
+        return Err(CmdError::from("服务返回的文件不是有效 PDF"));
+    }
+    Ok(tauri::ipc::Response::new(bytes))
+}

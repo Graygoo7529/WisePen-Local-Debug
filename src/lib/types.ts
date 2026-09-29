@@ -333,6 +333,17 @@ export interface AssetUploadInitResponse {
 }
 
 // ============ Resource 服务 ============
+export interface CurrentUser {
+  userId: string;
+  userInfo: { nickname?: string; username: string; identityType: number; userStatus: string };
+}
+
+export interface UserGroup {
+  groupId: string;
+  groupName: string;
+  groupType: string;
+}
+
 export type ResourceType =
   | "NOTE"
   | "DRAWIO"
@@ -390,4 +401,72 @@ export interface SearchHitItem {
   resourceName: string;
   highlightContent: string;
   updateTime: string;
+}
+
+// ============ Document 服务 ============
+export interface DocumentUploadInitResponse {
+  documentId: string;
+  putUrl: string | null;
+  callbackHeader: string | null;
+  objectKey: string;
+  flashUploaded: boolean;
+}
+
+export interface DocumentStatus {
+  status: string;
+  errorMessage?: string | null;
+}
+
+export interface DocumentVersionInfo {
+  version: number;
+  uploadMeta: { documentName: string; fileType: string; size: number | string };
+  documentStatus: DocumentStatus;
+  maxPreviewPages: number | null;
+}
+
+export interface DocumentInfoResponse {
+  resourceInfo: ResourceItem;
+  documentVersionInfo?: DocumentVersionInfo | null;
+}
+
+export interface DocumentImageReference {
+  imageIndex: number;
+  objectKey: string;
+  markdownLink: string;
+  alt: string;
+  pageNo: number | null;
+  pageLocation: "INFERRED" | "UNKNOWN";
+}
+
+export interface DocumentImageReferencesResponse {
+  resourceId: string;
+  documentId: string;
+  version: number;
+  images: DocumentImageReference[];
+  unknownPageImageCount: number | string;
+}
+
+export interface DocumentPreviewImageResponse {
+  resourceId: string;
+  documentId: string;
+  version: number;
+  objectKey: string | null;
+  markdownLink: string | null;
+  sourcePageNo: number;
+  previewKind: string;
+}
+
+export interface DocumentImageResolveResponse {
+  resourceId: string;
+  documentId: string;
+  version: number;
+  objectKey: string;
+  downloadUrl: string;
+  expiresInSeconds: number | string;
+}
+
+export interface DocumentSearchTextResponse {
+  resourceId: string;
+  version: number;
+  searchText: string | null;
 }

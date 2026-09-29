@@ -5,6 +5,7 @@ import {
   Brain,
   Compass,
   Cpu,
+  FileSearch,
   FolderOpen,
   MessageSquare,
   Moon,
@@ -26,6 +27,7 @@ import MemoryPage from "./pages/MemoryPage";
 import ResourcesPage from "./pages/ResourcesPage";
 import ExplorerPage from "./pages/ExplorerPage";
 import SettingsPage from "./pages/SettingsPage";
+import DocumentAssetsPage from "./pages/DocumentAssetsPage";
 
 const NAV_ITEMS = [
   { to: "/chat", label: "对话", icon: MessageSquare },
@@ -35,6 +37,7 @@ const NAV_ITEMS = [
   { to: "/tools", label: "工具与 MCP", icon: Wrench },
   { to: "/memory", label: "长期记忆", icon: Brain },
   { to: "/resources", label: "资源浏览", icon: FolderOpen },
+  { to: "/document-assets", label: "文档空间", icon: FileSearch },
   { to: "/explorer", label: "端点探索器", icon: Compass },
 ];
 
@@ -115,6 +118,7 @@ export default function App() {
           <Route path="/tools" element={<ToolsPage />} />
           <Route path="/memory" element={<MemoryPage />} />
           <Route path="/resources" element={<ResourcesPage />} />
+          <Route path="/document-assets" element={<DocumentAssetsPage />} />
           <Route path="/explorer" element={<ExplorerPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/chat" replace />} />

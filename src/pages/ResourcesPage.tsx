@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronRight, Folder, RefreshCw, Search, Tag } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { resourceApi } from "../api/resource";
 import type {
   ResourceItem,
@@ -22,7 +22,7 @@ import { Modal } from "../components/Modal";
 import { JsonView } from "../components/JsonView";
 import { formatBytes, formatDateTime } from "../lib/format";
 import { toast } from "../stores/toastStore";
-import { cn } from "../lib/cn";
+import { TagTreeItem } from "../components/resources/TagTreeItem";
 
 const PAGE_SIZE = 20;
 
@@ -47,65 +47,6 @@ function typeTone(t: string): BadgeTone {
   if (t === "PDF" || t === "DOC" || t === "DOCX") return "blue";
   if (t === "DRAWIO") return "yellow";
   return "gray";
-}
-
-// ============ 标签树 ============
-function TagTreeItem({
-  node,
-  depth,
-  selectedId,
-  onSelect,
-}: {
-  node: TagTreeNode;
-  depth: number;
-  selectedId: string | null;
-  onSelect: (tagId: string) => void;
-}) {
-  const [open, setOpen] = useState(true);
-  const hasChildren = node.children.length > 0;
-  const selected = selectedId === node.tagId;
-
-  return (
-    <div>
-      <div
-        className={cn(
-          "flex items-center gap-0.5 rounded-md py-1 pr-1.5 text-[13px] transition-colors",
-          selected ? "bg-accent-soft text-accent" : "text-fg-muted hover:bg-bg-hover hover:text-fg",
-        )}
-        style={{ paddingLeft: depth * 14 + 6 }}
-      >
-        {hasChildren ? (
-          <button
-            className="flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center"
-            onClick={() => setOpen((v) => !v)}
-            title={open ? "收起" : "展开"}
-          >
-            <ChevronRight size={12} className={cn("transition-transform", open && "rotate-90")} />
-          </button>
-        ) : (
-          <span className="w-4 shrink-0" />
-        )}
-        <button
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left"
-          title={node.tagName}
-          onClick={() => onSelect(node.tagId)}
-        >
-          {node.isPath ? <Folder size={13} className="shrink-0" /> : <Tag size={12} className="shrink-0" />}
-          <span className="truncate">{node.tagName}</span>
-        </button>
-      </div>
-      {open &&
-        node.children.map((child) => (
-          <TagTreeItem
-            key={child.tagId}
-            node={child}
-            depth={depth + 1}
-            selectedId={selectedId}
-            onSelect={onSelect}
-          />
-        ))}
-    </div>
-  );
 }
 
 // ============ 页面 ============

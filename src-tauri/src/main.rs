@@ -10,6 +10,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             http::rest_request,
             http::http_get_text,
+            http::http_get_pdf,
             sse::chat_stream,
             sse::abort_chat,
             fsutil::read_text_file,
