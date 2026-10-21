@@ -6,10 +6,13 @@ import { SessionSidebar } from "../components/chat/SessionSidebar";
 import { MessageItem } from "../components/chat/MessageItem";
 import { Composer } from "../components/chat/Composer";
 import { RequestOptionsPanel } from "../components/chat/RequestOptionsPanel";
+import { SavedSubagents, SubagentTree } from "../components/chat/SubagentTree";
 import {
   partsFromLiveTurn,
   partsFromUIMessage,
   userPartsFromLiveTurn,
+  subagentHistoryRoot,
+  liveUserIsInHistory,
 } from "../components/chat/chatDisplay";
 import { Badge, Button, EmptyState, IconButton, Spinner } from "../components/ui";
 import { formatRelativeTime } from "../lib/format";
@@ -118,22 +121,25 @@ export default function ChatPage() {
               />
             )}
             {history.map((msg) => (
+              <div key={msg.id}>
               <MessageItem
-                key={msg.id}
                 role={msg.role === "user" ? "user" : "assistant"}
                 parts={partsFromUIMessage(msg)}
                 createdAt={msg.createdAt ? formatRelativeTime(msg.createdAt) : undefined}
               />
+              {session && subagentHistoryRoot(msg) && <SavedSubagents sessionId={session.id} root={subagentHistoryRoot(msg)!} />}
+              </div>
             ))}
             {liveTurns.map((turn) => (
               <div key={turn.id}>
-                <MessageItem role="user" parts={userPartsFromLiveTurn(turn)} />
+                {!liveUserIsInHistory(turn, history) && <MessageItem role="user" parts={userPartsFromLiveTurn(turn)} />}
                 <MessageItem
                   role="assistant"
                   parts={partsFromLiveTurn(turn)}
                   streaming={turn.status === "streaming" || turn.status === "cancelling"}
                   rawEvents={turn.rawEvents}
                 />
+                {turn.subagents && <SubagentTree projection={turn.subagents} sessionId={session?.id} />}
               </div>
             ))}
           </div>

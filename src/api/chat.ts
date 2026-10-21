@@ -14,6 +14,8 @@ import type {
   UIMessage,
   UserMcpServer,
   McpPreviewResult,
+  SubagentRunView,
+  ModelUsageView,
 } from "../lib/types";
 
 /** wisepen-chat-service（Python，/chat 前缀）的全部业务端点。 */
@@ -63,6 +65,20 @@ export const chatApi = {
     }),
   cancelChatCompletion: (sessionId: string) =>
     post<unknown>("chat", "/chat/completions/cancel", { session_id: sessionId }),
+  listSubagents: (sessionId: string, rootExecutionId: string) =>
+    get<{ runs: SubagentRunView[]; usage: ModelUsageView[] }>("chat", "/chat/subagents", {
+      session_id: sessionId, root_execution_id: rootExecutionId,
+    }),
+  subagentDetail: (sessionId: string, childId: string, runId: string) =>
+    get<{ run: SubagentRunView; messages: UIMessage[] }>(
+      "chat", `/chat/subagents/${encodeURIComponent(childId)}/runs/${encodeURIComponent(runId)}`,
+      { session_id: sessionId },
+    ),
+  controlSubagent: (childId: string, kind: "input" | "cancel", body: {
+    session_id: string; root_execution_id: string; run_id: string; command_id: string; input?: string;
+  }) => post<{ command_id: string; status: "accepted" | "applied" | "rejected" }>(
+    "chat", `/chat/subagents/${encodeURIComponent(childId)}/${kind}`, body,
+  ),
 
   // ---- Attachment ----
   initUploadTemporaryAttachment: (body: {

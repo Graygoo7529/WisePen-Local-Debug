@@ -1,6 +1,16 @@
 import type { LiveTurn, ToolCallStatus, ToolCallView } from "../../stores/chatStore";
 import type { UIMessage } from "../../lib/types";
 
+export function subagentHistoryRoot(message: UIMessage) {
+  return message.role === "assistant" ? message.metadata?.root_execution_id : undefined;
+}
+
+export function liveUserIsInHistory(turn: LiveTurn, history: UIMessage[]) {
+  const root = turn.subagents?.rootExecutionId;
+  return Boolean(root && history.some((message) => message.role === "user"
+    && message.metadata?.root_execution_id === root));
+}
+
 /** 渲染层统一的消息部件：历史消息与实时回合都归一化到这里。 */
 export type DisplayPart =
   | { kind: "text"; text: string }
