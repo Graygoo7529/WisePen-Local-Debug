@@ -392,6 +392,20 @@ export function RequestOptionsPanel({ onClose }: { onClose: () => void }) {
         </div>
       </Field>
 
+      <Field label="本輪 Subagents">
+        <Button
+          role="switch"
+          aria-checked={options.subagentsEnabled}
+          disabled={toolOverrideDisabled}
+          onClick={() => setOptions({ subagentsEnabled: !options.subagentsEnabled })}
+        >Subagents：{options.subagentsEnabled ? "啟用" : "關閉"}</Button>
+      </Field>
+      {options.subagentsEnabled && <Field label="Subagents 設定 JSON"
+        hint='預設 active 4、累計 16、時限 600 秒、迭代 10、深度 1。候選格式：{"agents":[{"agent_id":"ID","version":1}],"models":[{"model":"ID","provider_id":"ID","runtime_options":{}}]}；後端重驗權限及模型參數。'>
+        <Textarea aria-label="Subagents 設定 JSON" className="min-h-[80px] font-mono text-xs"
+          value={options.subagentsConfigText} spellCheck={false}
+          onChange={(e) => setOptions({ subagentsConfigText: e.target.value })} />
+      </Field>}
       <Field label="runtime_options（JSON，按 Provider manifest 校验）">
         <Textarea
           className="min-h-[56px] font-mono text-xs"

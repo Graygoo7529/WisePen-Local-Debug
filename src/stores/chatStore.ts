@@ -24,6 +24,9 @@ import type {
   FrontendState,
   SessionInfo,
   SseEvent,
+  SubagentProjection,
+  SubagentRunView,
+  ModelUsageView,
   TemporaryAttachmentRef,
   UIMessage,
 } from "../lib/types";
@@ -82,6 +85,7 @@ export interface LiveTurn {
   cancelRequested?: boolean;
   messageId?: string;
   text: string;
+  subagents?: SubagentProjection;
   reasoning: string;
   reasoningStartedAt?: number;
   reasoningFinishedAt?: number;
@@ -99,6 +103,8 @@ export interface RequestOptions {
   model: string;
   providerId: string;
   runtimeOptionsText: string;
+  subagentsEnabled: boolean;
+  subagentsConfigText: string;
   overrideToolSelection: boolean;
   toolSelectionDefaultEnabled: boolean;
   toolSelectionOverrides: Record<string, boolean>;
@@ -126,6 +132,8 @@ export const defaultRequestOptions = (): RequestOptions => ({
   model: useSettingsStore.getState().defaultModel,
   providerId: "",
   runtimeOptionsText: "",
+  subagentsEnabled: false,
+  subagentsConfigText: "{}",
   overrideToolSelection: false,
   toolSelectionDefaultEnabled: true,
   toolSelectionOverrides: {},
@@ -149,6 +157,60 @@ export function applySseEvent(turn: LiveTurn, ev: SseEvent, raw: string): LiveTu
   pushRawToTool();
 
   switch (ev.type) {
+    case "data-subagent": {
+      const data = ev.data as Record<string, unknown> | undefined;
+      if (!data || typeof data.root_execution_id !== "string"
+        || typeof data.sequence !== "number" || !Number.isSafeInteger(data.sequence) || data.sequence < 1) break;
+      const previous = next.subagents?.rootExecutionId === data.root_execution_id ? next.subagents : undefined;
+      if (previous && data.sequence <= previous.sequence) break;
+      const runs = data.kind === "snapshot" && Array.isArray(data.runs)
+        ? data.runs.filter(isSubagentRun)
+        : [...(previous?.runs ?? [])];
+      const events = data.kind === "snapshot" ? {} : { ...(previous?.events ?? {}) };
+      const commands = data.kind === "snapshot" ? {} : { ...(previous?.commands ?? {}) };
+      let usage = data.kind === "snapshot" && Array.isArray(data.usage)
+        ? data.usage.filter(isModelUsage) : [...(previous?.usage ?? [])];
+      if (data.kind === "control" && typeof data.command_id === "string" && typeof data.run_id === "string"
+        && (data.status === "accepted" || data.status === "applied" || data.status === "rejected")) {
+        commands[data.command_id] = { runId: data.run_id, status: data.status,
+          detail: typeof data.detail === "string" ? data.detail : undefined };
+      }
+      const run = data.run;
+      if (isSubagentRun(run)) {
+        const index = runs.findIndex((item) => item.run_id === run.run_id);
+        if (index < 0) runs.push(run);
+        else runs[index] = run;
+      }
+      if (data.kind === "usage" && isModelUsage(data.usage)) {
+        const entry = data.usage;
+        if (typeof data.run_id === "string") {
+          const index = runs.findIndex((item) => item.run_id === data.run_id);
+          if (index >= 0) {
+            const entries = [...(runs[index].usage ?? []).filter((item) => item.request_id !== entry.request_id), entry];
+            runs[index] = { ...runs[index], usage: entries,
+              token_usage: entries.reduce((total, item) => total + (item.token_usage ?? 0), 0),
+              billing_status: (["unknown", "failed", "confirmed"] as const).find((status) => entries.some((item) => item.billing_status === status))
+                ?? "not_attempted" };
+          }
+        } else {
+          usage = [...usage.filter((item) => item.request_id !== entry.request_id), entry];
+        }
+      }
+      if (data.kind === "event" && typeof data.run_id === "string"
+        && data.event && typeof data.event === "object"
+        && "type" in data.event && typeof data.event.type === "string") {
+        const childEvent = data.event as SseEvent;
+        const index = runs.findIndex((item) => item.run_id === data.run_id);
+        if (index >= 0) {
+          if (childEvent.type === "text-delta" && typeof childEvent.delta === "string") {
+            runs[index] = { ...runs[index], output: runs[index].output + childEvent.delta };
+          }
+          events[data.run_id] = [...(events[data.run_id] ?? []), childEvent];
+        }
+      }
+      next.subagents = { rootExecutionId: data.root_execution_id, sequence: data.sequence, runs, events, commands, usage };
+      break;
+    }
     case "start":
       next.messageId = ev.messageId;
       break;
@@ -242,6 +304,25 @@ export function applySseEvent(turn: LiveTurn, ev: SseEvent, raw: string): LiveTu
   return next;
 }
 
+function isSubagentRun(value: unknown): value is SubagentRunView {
+  if (!value || typeof value !== "object") return false;
+  const run = value as Record<string, unknown>;
+  return typeof run.child_id === "string" && typeof run.run_id === "string"
+    && typeof run.status === "string" && typeof run.output === "string"
+    && (run.parent_run_id === null || typeof run.parent_run_id === "string")
+    && typeof run.model_id === "string" && typeof run.provider_id === "string"
+    && (run.error == null || typeof run.error === "string")
+    && typeof run.token_usage === "number" && Number.isFinite(run.token_usage) && run.token_usage >= 0;
+}
+
+function isModelUsage(value: unknown): value is ModelUsageView {
+  if (!value || typeof value !== "object") return false;
+  const usage = value as Record<string, unknown>;
+  return typeof usage.request_id === "string" && typeof usage.model_id === "string"
+    && typeof usage.provider_id === "string"
+    && (usage.token_usage === null || typeof usage.token_usage === "number")
+    && ["observed", "estimated", "unknown"].includes(String(usage.provenance));
+}
 // ============ Store ============
 interface ChatState {
   sessions: SessionInfo[];
@@ -814,6 +895,16 @@ export const useChatStore = create<ChatState>((set, getState) => {
     const opts = getState().options;
     const userDefinedAttachments = currentUserDefinedAttachments(getState());
     let runtimeOptions: Record<string, unknown> = {};
+    let subagents: ChatRequest["subagents"];
+    if (opts.subagentsEnabled) {
+      try {
+        subagents = JSON.parse(opts.subagentsConfigText || "{}");
+        if (!subagents || typeof subagents !== "object" || Array.isArray(subagents)) throw new Error("object required");
+      } catch {
+        toast.error("Subagents 設定必須是 JSON 物件");
+        return;
+      }
+    }
     if (opts.runtimeOptionsText.trim()) {
       try {
         runtimeOptions = JSON.parse(opts.runtimeOptionsText);
@@ -829,6 +920,7 @@ export const useChatStore = create<ChatState>((set, getState) => {
       model: opts.model || null,
       provider_id: opts.providerId || null,
       runtime_options: runtimeOptions,
+      subagents,
       frontend_states: opts.frontendStates.length > 0 ? opts.frontendStates : null,
       user_defined_attachment_ids:
         userDefinedAttachments.length > 0

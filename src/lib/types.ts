@@ -52,6 +52,7 @@ export interface UIMessage {
   role: string;
   parts: UIMessagePart[];
   createdAt?: string | null;
+  metadata?: { root_execution_id?: string; [key: string]: unknown };
 }
 
 export interface UIMessagePart {
@@ -73,6 +74,7 @@ export interface FrontendState {
 export interface ChatRequest {
   session_id: string;
   query: string;
+  subagents?: SubagentOptions | null;
   model?: string | null;
   provider_id?: string | null;
   runtime_options?: Record<string, unknown>;
@@ -82,6 +84,63 @@ export interface ChatRequest {
   tool_selection_overrides?: Record<string, boolean> | null;
   user_defined_on_demand_skill_ids?: string[] | null;
   client_tool_capabilities?: ClientToolCapability[];
+}
+
+export interface SubagentOptions {
+  agents?: { agent_id: string; version: number }[];
+  models?: { model: string; provider_id?: string; runtime_options?: Record<string, unknown> }[];
+  max_active_runs?: number;
+  max_total_runs?: number;
+  run_timeout_seconds?: number;
+  max_iterations?: number;
+  max_depth?: number;
+}
+
+export interface SubagentRunView {
+  child_id: string;
+  run_id: string;
+  parent_run_id: string | null;
+  status: string;
+  output: string;
+  error?: string | null;
+  model_id: string;
+  provider_id: string;
+  token_usage: number;
+  billing_status?: "not_attempted" | "confirmed" | "failed" | "unknown";
+  usage?: ModelUsageView[];
+  history_available?: boolean;
+  depth?: number;
+  agent_id?: string | null;
+  agent_version?: number | null;
+}
+
+export interface ModelUsageView {
+  request_id: string;
+  model_id: string;
+  provider_id: string;
+  model_name: string;
+  token_usage: number | null;
+  provenance: "observed" | "estimated" | "unknown";
+  billable_tokens: number;
+  input_tokens: number | null;
+  cached_input_tokens: number | null;
+  output_tokens: number | null;
+  usage_source: string | null;
+  input_billing_ratio: string;
+  cached_input_billing_ratio: string;
+  output_billing_ratio: string;
+  billing_status: "not_attempted" | "confirmed" | "failed" | "unknown";
+  provider_usage_status: "not_attempted" | "confirmed" | "unknown";
+  receipt: Record<string, unknown>;
+}
+
+export interface SubagentProjection {
+  rootExecutionId: string;
+  sequence: number;
+  runs: SubagentRunView[];
+  events: Record<string, SseEvent[]>;
+  usage?: ModelUsageView[];
+  commands?: Record<string, { runId: string; status: "accepted" | "applied" | "rejected"; detail?: string }>;
 }
 
 export interface ClientToolCapability {
